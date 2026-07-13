@@ -11,7 +11,6 @@ const PORT = process.env.PORT || 10000;
 const API_URL_HU = 'https://wtx.tele68.com/v1/tx/sessions';
 const API_URL_MD5 = 'https://wtxmd52.tele68.com/v1/txmd5/sessions';
 
-// ═══════════════ AUTH ═══════════════
 const MASTER_KEY = crypto.randomBytes(4).toString('hex');
 const TOKEN_STORE = new Map();
 const MASTER_TOKEN = crypto.randomBytes(32).toString('hex');
@@ -20,23 +19,22 @@ TOKEN_STORE.set(MASTER_TOKEN, { role: 'admin', created: Date.now(), permanent: t
 const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// ═══════════════ ZALO ĐẠI CA ═══════════════
 const ZALO_DAICA = '0347674021';
-const DAICA_NAME = 'ANH KHÔI';
+const DAICA_NAME = 'ANH KHOI';
 
-console.log('\n╔══════════════════════════════════════════╗');
-console.log('║   👑 ANH KHOI SIÊU VIP ELITE v13.0     ║');
-console.log('║   "Phân tích độc quyền - Chuẩn xác"    ║');
-console.log('╠══════════════════════════════════════════╣');
-console.log('║   Mã truy cập: ' + MASTER_KEY + '                  ║');
-console.log('║   Port: ' + PORT + '                       ║');
-console.log('║   Zalo Đại Ca: ' + ZALO_DAICA + '            ║');
-console.log('╚══════════════════════════════════════════╝\n');
+console.log('\n==========================================');
+console.log('  ANH KHOI DEEP LEARNING v15.0');
+console.log('  "Thuat toan sieu du doan - Tim Premium"');
+console.log('==========================================');
+console.log('  Ma truy cap: ' + MASTER_KEY);
+console.log('  Port: ' + PORT);
+console.log('  Zalo Dai Ca: ' + ZALO_DAICA);
+console.log('==========================================\n');
 
-// ═══════════════════════════════════════════
-// SIÊU VIP ELITE PREDICTOR - PHÂN TÍCH ĐỘC QUYỀN
-// ═══════════════════════════════════════════
-class SieuVipElitePredictor {
+// ==========================================
+// DEEP LEARNING PREDICTOR - SIEU DU DOAN
+// ==========================================
+class DeepLearningPredictor {
     constructor(sanhType) {
         this.sanhType = sanhType;
         this.stats = { total: 0, correct: 0, wrong: 0, streak: 0 };
@@ -44,232 +42,375 @@ class SieuVipElitePredictor {
         this.lastSession = null;
         this.consecutiveLoss = 0;
         this.lastPrediction = null;
-        this.confidenceHistory = [];
+        
+        // Markov bac 2
+        this.transitionMatrix = {};
+        // Markov bac 3
+        this.transitionMatrix3 = {};
+        // Pattern Memory
+        this.patternMemory = [];
+        // Bayesian
+        this.bayesianPrior = { T: 0.5, X: 0.5 };
+        this.bayesianCount = { T: 0, X: 0 };
+        // Strategy Weights
+        this.strategyWeights = {
+            markov2: 1.0,
+            markov3: 1.0,
+            pattern: 1.0,
+            streak: 1.0,
+            balance: 1.0,
+            totalScore: 1.0,
+            maCross: 1.0,
+            bayesian: 1.0,
+            reverse: 1.0,
+            adaptive: 1.0
+        };
+        this.strategyPerformance = {};
+        for (let key of Object.keys(this.strategyWeights)) {
+            this.strategyPerformance[key] = { correct: 0, total: 0 };
+        }
+        this.learningRate = 0.15;
+        this.adaptiveRate = 0.05;
+        
+        // Theo doi hieu suat tung khung thoi gian
+        this.timeFramePerformance = {
+            last5: { correct: 0, total: 0 },
+            last10: { correct: 0, total: 0 },
+            last20: { correct: 0, total: 0 },
+            last50: { correct: 0, total: 0 }
+        };
     }
 
-    // Phân tích chuyên sâu đa tầng
-    analyzeDeep(history) {
-        if (!history || history.length < 3) {
-            return { prediction: '...', confidence: 0, ready: false, reason: 'Đang thu thập dữ liệu...' };
+    updateMarkovMatrix(history) {
+        const results = history.map(h => h.result === 'Tai' ? 'T' : 'X');
+        for (let i = 0; i < results.length - 2; i++) {
+            const key = results[i + 1] + results[i];
+            const next = results[i];
+            if (!this.transitionMatrix[key]) {
+                this.transitionMatrix[key] = { T: 0, X: 0, total: 0 };
+            }
+            this.transitionMatrix[key][next]++;
+            this.transitionMatrix[key].total++;
         }
+        for (let i = 0; i < results.length - 3; i++) {
+            const key = results[i + 2] + results[i + 1] + results[i];
+            const next = results[i];
+            if (!this.transitionMatrix3[key]) {
+                this.transitionMatrix3[key] = { T: 0, X: 0, total: 0 };
+            }
+            this.transitionMatrix3[key][next]++;
+            this.transitionMatrix3[key].total++;
+        }
+    }
 
-        const results = history.map(h => h.result === 'Tài' ? 'T' : 'X');
-        const totals = history.map(h => h.totalScore || 10.5);
-        const dices = history.map(h => ({ d1: h.d1 || 0, d2: h.d2 || 0, d3: h.d3 || 0 }));
+    updatePatternMemory(history) {
+        const results = history.map(h => h.result === 'Tai' ? 'T' : 'X');
+        if (results.length >= 5) {
+            const pattern = results.slice(0, 5).join('');
+            const nextResult = results.length > 5 ? results[5] : null;
+            let found = this.patternMemory.find(p => p.pattern === pattern);
+            if (found) {
+                found.count++;
+                if (nextResult) {
+                    found.nextResults[nextResult] = (found.nextResults[nextResult] || 0) + 1;
+                }
+                found.lastSeen = Date.now();
+            } else {
+                this.patternMemory.push({
+                    pattern: pattern,
+                    count: 1,
+                    nextResults: nextResult ? { [nextResult]: 1 } : {},
+                    lastSeen: Date.now()
+                });
+            }
+            if (this.patternMemory.length > 500) {
+                this.patternMemory.sort((a, b) => b.lastSeen - a.lastSeen);
+                this.patternMemory = this.patternMemory.slice(0, 300);
+            }
+        }
+    }
 
-        // ═══════════ PHÂN TÍCH ĐA TẦNG ═══════════
-        const totalSessions = results.length;
-        const lastResult = results[0];
-        const lastTotal = totals[0];
+    updateBayesian(history) {
+        const results = history.map(h => h.result === 'Tai' ? 'T' : 'X');
+        for (let r of results) {
+            this.bayesianCount[r]++;
+        }
+        const total = this.bayesianCount.T + this.bayesianCount.X;
+        if (total > 0) {
+            this.bayesianPrior.T = this.bayesianCount.T / total;
+            this.bayesianPrior.X = this.bayesianCount.X / total;
+        }
+    }
 
-        // Đếm T/X các khung thời gian
-        const khung5 = results.slice(0, Math.min(5, totalSessions));
-        const khung7 = results.slice(0, Math.min(7, totalSessions));
-        const khung10 = results.slice(0, Math.min(10, totalSessions));
-        const khung15 = results.slice(0, Math.min(15, totalSessions));
-        const khung20 = results.slice(0, Math.min(20, totalSessions));
+    reinforceStrategy(strategyName, wasCorrect) {
+        const perf = this.strategyPerformance[strategyName];
+        if (!perf) return;
+        perf.total++;
+        if (wasCorrect) perf.correct++;
+        const winRate = perf.total > 0 ? perf.correct / perf.total : 0.5;
+        this.strategyWeights[strategyName] = 0.3 + (winRate * 1.6);
+        this.strategyWeights[strategyName] = Math.max(0.2, Math.min(2.0, this.strategyWeights[strategyName]));
+    }
 
-        const t5 = khung5.filter(r => r === 'T').length;
-        const t7 = khung7.filter(r => r === 'T').length;
-        const t10 = khung10.filter(r => r === 'T').length;
-        const t15 = khung15.filter(r => r === 'T').length;
-        const t20 = khung20.filter(r => r === 'T').length;
+    predictMarkov2(results) {
+        if (results.length < 3) return null;
+        const key = results[1] + results[0];
+        const matrix = this.transitionMatrix[key];
+        if (!matrix || matrix.total < 3) return null;
+        const probT = matrix.T / matrix.total;
+        const probX = matrix.X / matrix.total;
+        const confidence = Math.abs(probT - probX) * 100;
+        return {
+            prediction: probT >= probX ? 'Tai' : 'Xiu',
+            confidence: Math.min(90, 50 + confidence),
+            probT, probX,
+            source: 'Markov bac 2'
+        };
+    }
 
-        const x5 = khung5.length - t5;
-        const x7 = khung7.length - t7;
-        const x10 = khung10.length - t10;
-        const x15 = khung15.length - t15;
-        const x20 = khung20.length - t20;
+    predictMarkov3(results) {
+        if (results.length < 4) return null;
+        const key = results[2] + results[1] + results[0];
+        const matrix = this.transitionMatrix3[key];
+        if (!matrix || matrix.total < 2) return null;
+        const probT = matrix.T / matrix.total;
+        const probX = matrix.X / matrix.total;
+        const confidence = Math.abs(probT - probX) * 110;
+        return {
+            prediction: probT >= probX ? 'Tai' : 'Xiu',
+            confidence: Math.min(92, 50 + confidence),
+            probT, probX,
+            source: 'Markov bac 3'
+        };
+    }
 
-        // Streak hiện tại
-        let currentStreak = 1;
+    predictPattern(results) {
+        if (results.length < 5) return null;
+        const pattern = results.slice(0, 5).join('');
+        const found = this.patternMemory.find(p => p.pattern === pattern);
+        if (!found || found.count < 2) return null;
+        const totalNext = (found.nextResults.T || 0) + (found.nextResults.X || 0);
+        if (totalNext < 2) return null;
+        const probT = (found.nextResults.T || 0) / totalNext;
+        const probX = (found.nextResults.X || 0) / totalNext;
+        const confidence = 50 + (Math.abs(probT - probX) * 100);
+        return {
+            prediction: probT >= probX ? 'Tai' : 'Xiu',
+            confidence: Math.min(88, confidence),
+            probT, probX,
+            source: `Pattern (xuat hien ${found.count} lan)`
+        };
+    }
+
+    predictStreak(results) {
+        let streak = 1;
         for (let i = 1; i < results.length; i++) {
-            if (results[i] === results[0]) currentStreak++;
+            if (results[i] === results[0]) streak++;
             else break;
         }
-        const trendDirection = results[0];
-
-        // Streak dài nhất
-        let maxStreak = 1;
-        let tempStreak = 1;
-        for (let i = 1; i < results.length; i++) {
-            if (results[i] === results[i - 1]) tempStreak++;
-            else { maxStreak = Math.max(maxStreak, tempStreak);
-                tempStreak = 1; }
+        if (streak >= 8) {
+            return {
+                prediction: results[0] === 'T' ? 'Xiu' : 'Tai',
+                confidence: 78 + Math.min(streak - 8, 7),
+                source: `Day ${streak} - Kha nang gay cao`
+            };
+        } else if (streak >= 5) {
+            return {
+                prediction: results[0] === 'T' ? 'Xiu' : 'Tai',
+                confidence: 65 + (streak - 5) * 3,
+                source: `Day ${streak} - Canh bao`
+            };
+        } else if (streak >= 3) {
+            return {
+                prediction: results[0],
+                confidence: 55 + streak,
+                source: `Day ${streak} - Tiep tuc`
+            };
         }
-        maxStreak = Math.max(maxStreak, tempStreak, currentStreak);
+        return null;
+    }
 
-        // Phân tích tổng điểm
+    predictBalance(results, totals) {
+        const t10 = results.slice(0, Math.min(10, results.length)).filter(r => r === 'T').length;
+        const x10 = Math.min(10, results.length) - t10;
+        const t20 = results.slice(0, Math.min(20, results.length)).filter(r => r === 'T').length;
+        const x20 = Math.min(20, results.length) - t20;
+        let scoreT = 0, scoreX = 0;
+        if (t10 >= 7) scoreX += (t10 - 6) * 1.5;
+        if (x10 >= 7) scoreT += (x10 - 6) * 1.5;
+        if (t20 >= 13) scoreX += (t20 - 12) * 1.2;
+        if (x20 >= 13) scoreT += (x20 - 12) * 1.2;
+        if (Math.abs(scoreT - scoreX) < 0.5) return null;
+        const total = scoreT + scoreX;
+        const confidence = total > 0 ? 50 + (Math.abs(scoreT - scoreX) / total) * 35 : 55;
+        return {
+            prediction: scoreT > scoreX ? 'Tai' : 'Xiu',
+            confidence: Math.min(80, confidence),
+            source: `Can bang (T10:${t10}/X10:${x10})`
+        };
+    }
+
+    predictTotalScore(totals) {
+        const lastTotal = totals[0];
         const avg3 = totals.slice(0, Math.min(3, totals.length)).reduce((a, b) => a + b, 0) / Math.min(3, totals.length);
-        const avg5 = totals.slice(0, Math.min(5, totals.length)).reduce((a, b) => a + b, 0) / Math.min(5, totals.length);
         const avg7 = totals.slice(0, Math.min(7, totals.length)).reduce((a, b) => a + b, 0) / Math.min(7, totals.length);
-        const avg10 = totals.slice(0, Math.min(10, totals.length)).reduce((a, b) => a + b, 0) / Math.min(10, totals
-            .length);
+        let scoreT = 0, scoreX = 0;
+        if (lastTotal >= 16) scoreX += 4;
+        else if (lastTotal >= 13) scoreX += 2;
+        else if (lastTotal <= 5) scoreT += 4;
+        else if (lastTotal <= 8) scoreT += 2;
+        const maDiff = avg3 - avg7;
+        if (maDiff > 2) scoreX += 2.5;
+        if (maDiff < -2) scoreT += 2.5;
+        if (Math.abs(scoreT - scoreX) < 0.5) return null;
+        const confidence = 55 + Math.min(Math.abs(scoreT - scoreX) * 8, 30);
+        return {
+            prediction: scoreT > scoreX ? 'Tai' : 'Xiu',
+            confidence: Math.min(82, confidence),
+            source: `Tong diem (${lastTotal})`
+        };
+    }
 
-        // MA Crossover nâng cao
-        const maCrossover = avg3 - avg7;
-        const maTrend = avg5 - avg10;
+    predictBayesian(results) {
+        if (results.length < 5) return null;
+        const recent5 = results.slice(0, 5);
+        const recentT = recent5.filter(r => r === 'T').length;
+        const likelihood = recentT / 5;
+        const prior = this.bayesianPrior.T;
+        const adjustedProbT = (prior * 0.4 + likelihood * 0.6);
+        const adjustedProbX = 1 - adjustedProbT;
+        return {
+            prediction: adjustedProbT >= 0.5 ? 'Tai' : 'Xiu',
+            confidence: 50 + Math.abs(adjustedProbT - 0.5) * 80,
+            source: 'Bayesian'
+        };
+    }
 
-        // Phát hiện xen kẽ (đảo chiều liên tục)
-        let alternatingCount = 0;
-        for (let i = 1; i < Math.min(results.length, 6); i++) {
-            if (results[i] !== results[i - 1]) alternatingCount++;
+    predictReverse(results) {
+        let alternating = 0;
+        for (let i = 0; i < Math.min(results.length - 1, 5); i++) {
+            if (results[i] !== results[i + 1]) alternating++;
         }
-        const isAlternating = alternatingCount >= 3;
-
-        // Phát hiện cầu bệt (chuỗi dài)
-        const isBet = currentStreak >= 4;
-
-        // ═══════════ TÍNH ĐIỂM PHÂN TÍCH ═══════════
-        let scoreT = 0;
-        let scoreX = 0;
-        let analysisReasons = [];
-
-        // 1. Phân tích dây (Streak Analysis)
-        if (currentStreak >= 8) {
-            if (trendDirection === 'T') { scoreX += 5;
-                analysisReasons.push(`Dây Tài ${currentStreak} phiên - Khả năng gãy cao`); } else { scoreT += 5;
-                analysisReasons.push(`Dây Xỉu ${currentStreak} phiên - Khả năng gãy cao`); }
-        } else if (currentStreak >= 6) {
-            if (trendDirection === 'T') { scoreX += 4;
-                analysisReasons.push(`Dây Tài ${currentStreak} phiên - Cảnh báo đảo chiều`); } else { scoreT += 4;
-                analysisReasons.push(`Dây Xỉu ${currentStreak} phiên - Cảnh báo đảo chiều`); }
-        } else if (currentStreak >= 4) {
-            if (trendDirection === 'T') { scoreX += 2.5;
-                analysisReasons.push(`Dây Tài ${currentStreak} - Áp lực đảo chiều`); } else { scoreT += 2.5;
-                analysisReasons.push(`Dây Xỉu ${currentStreak} - Áp lực đảo chiều`); }
-        } else if (currentStreak >= 2 && this.sanhType === 'hu') {
-            if (trendDirection === 'T') { scoreT += 1.5;
-                analysisReasons.push('Theo xu hướng Tài Hũ'); } else { scoreX += 1.5;
-                analysisReasons.push('Theo xu hướng Xỉu Hũ'); }
+        if (alternating >= 4) {
+            return {
+                prediction: results[0] === 'T' ? 'Xiu' : 'Tai',
+                confidence: 60 + alternating * 5,
+                source: `Xen ke (${alternating}/5)`
+            };
         }
+        return null;
+    }
 
-        // 2. Phân tích cân bằng (Balance Analysis)
-        if (t10 >= 8 && t10 <= 10) { scoreX += 4;
-            analysisReasons.push(`10 phiên: ${t10}T/${x10}X - Mất cân bằng Tài`); }
-        if (x10 >= 8 && x10 <= 10) { scoreT += 4;
-            analysisReasons.push(`10 phiên: ${t10}T/${x10}X - Mất cân bằng Xỉu`); }
-        if (t15 >= 11) { scoreX += 3.5;
-            analysisReasons.push(`15 phiên lệch Tài (${t15}T)`); }
-        if (x15 >= 11) { scoreT += 3.5;
-            analysisReasons.push(`15 phiên lệch Xỉu (${x15}X)`); }
-        if (t20 >= 14) { scoreX += 2.5;
-            analysisReasons.push(`20 phiên quá nhiều Tài`); }
-        if (x20 >= 14) { scoreT += 2.5;
-            analysisReasons.push(`20 phiên quá nhiều Xỉu`); }
+    predictAdaptive(results) {
+        if (results.length < 10) return null;
+        const recent10 = results.slice(0, 10);
+        const tCount = recent10.filter(r => r === 'T').length;
+        const xCount = 10 - tCount;
+        // Phan tich xu huong gan day
+        const first5 = recent10.slice(5, 10);
+        const last5 = recent10.slice(0, 5);
+        const first5T = first5.filter(r => r === 'T').length;
+        const last5T = last5.filter(r => r === 'T').length;
+        const trend = last5T - first5T;
+        let prediction, confidence;
+        if (trend > 1) {
+            prediction = 'Tai';
+            confidence = 55 + trend * 8;
+        } else if (trend < -1) {
+            prediction = 'Xiu';
+            confidence = 55 + Math.abs(trend) * 8;
+        } else if (tCount > 6) {
+            prediction = 'Xiu';
+            confidence = 58;
+        } else if (xCount > 6) {
+            prediction = 'Tai';
+            confidence = 58;
+        } else {
+            prediction = tCount >= 5 ? 'Tai' : 'Xiu';
+            confidence = 52;
+        }
+        return {
+            prediction,
+            confidence: Math.min(78, confidence),
+            source: `Thich ung (xu huong: ${trend > 0 ? '+' : ''}${trend})`
+        };
+    }
 
-        // 3. Phân tích tổng điểm (Total Score Analysis)
-        if (lastTotal >= 17) { scoreX += 4.5;
-            analysisReasons.push(`Tổng điểm cực cao (${lastTotal})`); } else if (lastTotal >= 15) { scoreX += 2.5;
-            analysisReasons.push(`Tổng điểm cao (${lastTotal})`); } else if (lastTotal >= 13) { scoreX += 1.5;
-            analysisReasons.push(`Tổng điểm khá cao (${lastTotal})`); }
-
-        if (lastTotal <= 4) { scoreT += 4.5;
-            analysisReasons.push(`Tổng điểm cực thấp (${lastTotal})`); } else if (lastTotal <= 6) { scoreT += 2.5;
-            analysisReasons.push(`Tổng điểm thấp (${lastTotal})`); } else if (lastTotal <= 8) { scoreT += 1.5;
-            analysisReasons.push(`Tổng điểm khá thấp (${lastTotal})`); }
-
-        // 4. MA Crossover nâng cao
-        if (maCrossover > 2.5) { scoreX += 3;
-            analysisReasons.push('MA ngắn hạn tăng mạnh'); } else if (maCrossover > 1.5) { scoreX += 1.5;
-            analysisReasons.push('MA ngắn hạn tăng nhẹ'); }
-
-        if (maCrossover < -2.5) { scoreT += 3;
-            analysisReasons.push('MA ngắn hạn giảm mạnh'); } else if (maCrossover < -1.5) { scoreT += 1.5;
-            analysisReasons.push('MA ngắn hạn giảm nhẹ'); }
-
-        // 5. Xu hướng MA dài hạn
-        if (maTrend > 2) { scoreX += 2;
-            analysisReasons.push('Xu hướng dài hạn tăng'); }
-        if (maTrend < -2) { scoreT += 2;
-            analysisReasons.push('Xu hướng dài hạn giảm'); }
-
-        // 6. Phân tích xen kẽ
-        if (isAlternating && results.length >= 5) {
-            const nextPred = results[0] === 'T' ? 'X' : 'T';
-            if (nextPred === 'T') { scoreT += 2;
-                analysisReasons.push('Chuỗi xen kẽ - Dự đoán Tài'); } else { scoreX += 2;
-                analysisReasons.push('Chuỗi xen kẽ - Dự đoán Xỉu'); }
+    ensemblePredict(history) {
+        if (!history || history.length < 3) {
+            return { prediction: '...', confidence: 0, ready: false, reason: 'Dang thu thap du lieu...' };
         }
 
-        // 7. Phân tích ngắn hạn (5 phiên gần nhất)
-        if (t5 <= 1) { scoreT += 2;
-            analysisReasons.push(`5 phiên gần nhất: ${t5}T/${x5}X - Thiếu Tài`); }
-        if (x5 <= 1) { scoreX += 2;
-            analysisReasons.push(`5 phiên gần nhất: ${t5}T/${x5}X - Thiếu Xỉu`); }
+        const results = history.map(h => h.result === 'Tai' ? 'T' : 'X');
+        const totals = history.map(h => h.totalScore || 10.5);
 
-        // 8. Cân bằng tự nhiên
-        if (Math.abs(scoreT - scoreX) < 1.5) {
-            if (t5 >= 3) { scoreT += 1;
-                analysisReasons.push('Xu hướng ngắn hạn: Tài'); } else if (x5 >= 3) { scoreX += 1;
-                analysisReasons.push('Xu hướng ngắn hạn: Xỉu'); } else if (t10 >= 6) { scoreX += 0.5;
-                analysisReasons.push('Cân bằng - Ưu tiên Xỉu'); } else { scoreT += 0.5;
-                analysisReasons.push('Cân bằng - Ưu tiên Tài'); }
+        const strategies = [
+            { name: 'markov2', result: this.predictMarkov2(results) },
+            { name: 'markov3', result: this.predictMarkov3(results) },
+            { name: 'pattern', result: this.predictPattern(results) },
+            { name: 'streak', result: this.predictStreak(results) },
+            { name: 'balance', result: this.predictBalance(results, totals) },
+            { name: 'totalScore', result: this.predictTotalScore(totals) },
+            { name: 'bayesian', result: this.predictBayesian(results) },
+            { name: 'reverse', result: this.predictReverse(results) },
+            { name: 'adaptive', result: this.predictAdaptive(results) }
+        ];
+
+        const validStrategies = strategies.filter(s => s.result !== null);
+        
+        if (validStrategies.length === 0) {
+            return { prediction: results[0] === 'T' ? 'Tai' : 'Xiu', confidence: 51, ready: true, reason: 'Mac dinh' };
         }
 
-        // Áp dụng hệ số sảnh
-        if (this.sanhType === 'md5') {
-            scoreT *= 0.92;
-            scoreX *= 0.92;
+        let weightedT = 0, weightedX = 0, totalWeight = 0;
+        let reasons = [];
+
+        for (let strat of validStrategies) {
+            const weight = this.strategyWeights[strat.name] || 1.0;
+            const conf = strat.result.confidence / 100;
+            const combinedWeight = weight * conf;
+            if (strat.result.prediction === 'Tai') {
+                weightedT += combinedWeight;
+            } else {
+                weightedX += combinedWeight;
+            }
+            totalWeight += combinedWeight;
+            reasons.push(`${strat.result.source} (w:${weight.toFixed(1)})`);
         }
 
-        // Auto-correct thông minh khi sai liên tiếp
-        let autoFixed = false;
-        if (this.consecutiveLoss >= 3 && this.lastPrediction) {
-            const oldDecision = scoreT > scoreX ? 'Tài' : (scoreX > scoreT ? 'Xỉu' : (t5 >= 3 ? 'Tài' : 'Xỉu'));
-            // Đảo ngược quyết định
-            if (oldDecision === 'Tài') { scoreT = scoreX - 1;
-                autoFixed = true; } else { scoreX = scoreT - 1;
-                autoFixed = true; }
-            analysisReasons.push('⚡ AUTO-CORRECT (sai 3 lần liên tiếp)');
+        const probT = totalWeight > 0 ? weightedT / totalWeight : 0.5;
+        const probX = 1 - probT;
+        
+        let finalPrediction = probT >= probX ? 'Tai' : 'Xiu';
+        
+        if (this.consecutiveLoss >= 3) {
+            finalPrediction = finalPrediction === 'Tai' ? 'Xiu' : 'Tai';
+            reasons.push('AUTO-CORRECT');
         }
+        
+        const gap = Math.abs(probT - probX);
+        let confidence = 50 + gap * 45;
+        if (this.consecutiveLoss >= 3) confidence = Math.min(confidence, 60);
+        confidence = Math.round(Math.min(Math.max(confidence, 52), 90));
 
-        // Quyết định cuối cùng
-        let finalDecision;
-        if (scoreT > scoreX) finalDecision = 'Tài';
-        else if (scoreX > scoreT) finalDecision = 'Xỉu';
-        else finalDecision = t5 >= 3 ? 'Tài' : 'Xỉu';
-
-        // Tính độ tin cậy thực tế
-        const totalScore = Math.abs(scoreT) + Math.abs(scoreX);
-        const gap = Math.abs(scoreT - scoreX);
-        let confidence = 50;
-
-        if (totalScore > 0) {
-            confidence = 50 + (gap / totalScore) * 38;
-            // Điều chỉnh theo streak
-            if (currentStreak >= 8) confidence = Math.min(confidence + 12, 90);
-            else if (currentStreak >= 6) confidence = Math.min(confidence + 8, 85);
-            // Giảm confidence nếu đang auto-fix
-            if (autoFixed) confidence = Math.min(confidence, 62);
-            // Giảm nếu sai liên tiếp
-            if (this.consecutiveLoss >= 2) confidence = Math.min(confidence, 68);
-        }
-
-        confidence = Math.round(Math.min(Math.max(confidence, 51), 89));
-
-        this.lastPrediction = finalDecision;
-        this.confidenceHistory.push(confidence);
-        if (this.confidenceHistory.length > 50) this.confidenceHistory.shift();
+        this.lastPrediction = finalPrediction;
 
         return {
-            prediction: finalDecision,
+            prediction: finalPrediction,
             confidence: confidence,
             ready: true,
-            reason: analysisReasons.slice(0, 5).join(' | '),
-            scoreT: scoreT.toFixed(1),
-            scoreX: scoreX.toFixed(1),
-            streak: currentStreak,
-            maxStreak: maxStreak,
-            totalSessions: totalSessions,
-            autoFixed: autoFixed
+            reason: reasons.slice(0, 5).join(' | '),
+            probT: Math.round(probT * 100),
+            probX: Math.round(probX * 100),
+            strategyCount: validStrategies.length
         };
     }
 
     learn(history, prediction, actual) {
         if (!prediction || !actual) return;
         this.stats.total++;
-        if (prediction.prediction === actual) {
+        const wasCorrect = prediction.prediction === actual;
+        if (wasCorrect) {
             this.stats.correct++;
             this.stats.streak = this.stats.streak > 0 ? this.stats.streak + 1 : 1;
             this.consecutiveLoss = 0;
@@ -278,24 +419,58 @@ class SieuVipElitePredictor {
             this.stats.streak = this.stats.streak < 0 ? this.stats.streak - 1 : -1;
             this.consecutiveLoss++;
         }
+        this.updateMarkovMatrix(history);
+        this.updatePatternMemory(history);
+        this.updateBayesian(history);
+        for (let key of Object.keys(this.strategyWeights)) {
+            const perf = this.strategyPerformance[key];
+            if (perf && perf.total > 10) {
+                const wr = perf.correct / perf.total;
+                this.strategyWeights[key] = 0.3 + (wr * 1.6);
+            }
+        }
+        if (wasCorrect) {
+            this.learningRate = Math.min(0.3, this.learningRate * 1.02);
+        } else {
+            this.learningRate = Math.max(0.05, this.learningRate * 0.98);
+        }
+        // Cap nhat hieu suat theo khung thoi gian
+        const total = this.stats.total;
+        if (total <= 5) this.timeFramePerformance.last5.total++;
+        if (total <= 10) this.timeFramePerformance.last10.total++;
+        if (total <= 20) this.timeFramePerformance.last20.total++;
+        if (total <= 50) this.timeFramePerformance.last50.total++;
+        if (wasCorrect) {
+            if (total <= 5) this.timeFramePerformance.last5.correct++;
+            if (total <= 10) this.timeFramePerformance.last10.correct++;
+            if (total <= 20) this.timeFramePerformance.last20.correct++;
+            if (total <= 50) this.timeFramePerformance.last50.correct++;
+        }
     }
 
     getWinRate() {
         return this.stats.total > 0 ? Math.round((this.stats.correct / this.stats.total) * 100) : 0;
     }
 
+    getRecentWinRate(frames) {
+        const tf = this.timeFramePerformance[frames];
+        if (!tf || tf.total === 0) return 0;
+        return Math.round((tf.correct / tf.total) * 100);
+    }
+
     getReliability() {
-        if (this.stats.total < 10) return 'Đang học...';
+        if (this.stats.total < 20) return 'Dang hoc sau...';
         const wr = this.getWinRate();
-        if (wr >= 75) return 'Rất cao';
-        if (wr >= 65) return 'Cao';
-        if (wr >= 55) return 'Khá';
-        return 'Đang cải thiện';
+        if (wr >= 80) return 'Cuc cao';
+        if (wr >= 70) return 'Rat cao';
+        if (wr >= 60) return 'Cao';
+        if (wr >= 50) return 'Kha';
+        return 'Dang cai thien';
     }
 }
 
-const brainHU = new SieuVipElitePredictor('hu');
-const brainMD5 = new SieuVipElitePredictor('md5');
+const brainHU = new DeepLearningPredictor('hu');
+const brainMD5 = new DeepLearningPredictor('md5');
 
 function savePredictor(brain, filePath) {
     try {
@@ -304,7 +479,15 @@ function savePredictor(brain, filePath) {
             consecutiveLoss: brain.consecutiveLoss,
             lastPrediction: brain.lastPrediction,
             predictionCache: brain.predictionCache.slice(0, 200),
-            confidenceHistory: brain.confidenceHistory.slice(0, 50)
+            transitionMatrix: brain.transitionMatrix,
+            transitionMatrix3: brain.transitionMatrix3,
+            patternMemory: brain.patternMemory.slice(0, 200),
+            bayesianPrior: brain.bayesianPrior,
+            bayesianCount: brain.bayesianCount,
+            strategyWeights: brain.strategyWeights,
+            strategyPerformance: brain.strategyPerformance,
+            learningRate: brain.learningRate,
+            timeFramePerformance: brain.timeFramePerformance
         };
         fs.writeFileSync(filePath + '.tmp', JSON.stringify(data), 'utf8');
         fs.renameSync(filePath + '.tmp', filePath);
@@ -319,22 +502,29 @@ function loadPredictor(brain, filePath) {
             if (data.consecutiveLoss !== undefined) brain.consecutiveLoss = data.consecutiveLoss;
             if (data.lastPrediction) brain.lastPrediction = data.lastPrediction;
             if (data.predictionCache) brain.predictionCache = data.predictionCache;
-            if (data.confidenceHistory) brain.confidenceHistory = data.confidenceHistory;
+            if (data.transitionMatrix) brain.transitionMatrix = data.transitionMatrix;
+            if (data.transitionMatrix3) brain.transitionMatrix3 = data.transitionMatrix3;
+            if (data.patternMemory) brain.patternMemory = data.patternMemory;
+            if (data.bayesianPrior) brain.bayesianPrior = data.bayesianPrior;
+            if (data.bayesianCount) brain.bayesianCount = data.bayesianCount;
+            if (data.strategyWeights) brain.strategyWeights = data.strategyWeights;
+            if (data.strategyPerformance) brain.strategyPerformance = data.strategyPerformance;
+            if (data.learningRate) brain.learningRate = data.learningRate;
+            if (data.timeFramePerformance) brain.timeFramePerformance = data.timeFramePerformance;
         }
     } catch (e) {}
 }
 
-const brainHU_file = path.join(DATA_DIR, 'sieuvip_hu.json');
-const brainMD5_file = path.join(DATA_DIR, 'sieuvip_md5.json');
+const brainHU_file = path.join(DATA_DIR, 'deep_hu.json');
+const brainMD5_file = path.join(DATA_DIR, 'deep_md5.json');
 loadPredictor(brainHU, brainHU_file);
 loadPredictor(brainMD5, brainMD5_file);
 
-// ═══════════════ FETCH DATA ═══════════════
 function transformData(d) {
     if (!d || !d.list) return null;
     return d.list.map(item => ({
         sessionId: item.id,
-        result: item.resultTruyenThong === 'TAI' ? 'Tài' : 'Xỉu',
+        result: item.resultTruyenThong === 'TAI' ? 'Tai' : 'Xiu',
         totalScore: item.point,
         d1: item.dices ? item.dices[0] : 0,
         d2: item.dices ? item.dices[1] : 0,
@@ -348,7 +538,7 @@ async function fetchData(type) {
         const url = type === 'hu' ? API_URL_HU : API_URL_MD5;
         const response = await axios.get(url, {
             timeout: 8000,
-            headers: { 'User-Agent': 'AnhKhoiSieuVip/13.0', 'Accept': 'application/json' }
+            headers: { 'User-Agent': 'AnhKhoiDeepLearn/15.0', 'Accept': 'application/json' }
         });
         return transformData(response.data);
     } catch (err) {
@@ -356,33 +546,27 @@ async function fetchData(type) {
     }
 }
 
-// ═══════════════ XỬ LÝ GAME ═══════════════
 async function processGame(brain, gameType, filePath) {
     try {
         const gameData = await fetchData(gameType);
         if (!gameData || gameData.length === 0) return;
-
         const cur = gameData[0].sessionId;
         if (brain.lastSession === cur) return;
-
-        // Cập nhật trạng thái dự đoán cũ
         for (const r of brain.predictionCache) {
             if (r.status && r.status !== '') continue;
             const actual = gameData.find(g => g.sessionId.toString() === r.nextSession);
             if (actual) {
-                r.status = (r.prediction === actual.result) ? 'ĐÚNG' : 'SAI';
+                r.status = (r.prediction === actual.result) ? 'DUNG' : 'SAI';
                 brain.learn(gameData, { prediction: r.prediction }, actual.result);
             }
         }
-
         const ns = cur + 1;
         if (brain.predictionCache.some(r => r.nextSession === ns.toString())) {
             brain.lastSession = cur;
             savePredictor(brain, filePath);
             return;
         }
-
-        const result = brain.analyzeDeep(gameData);
+        const result = brain.ensemblePredict(gameData);
         const rec = {
             session: cur,
             nextSession: ns.toString(),
@@ -394,21 +578,15 @@ async function processGame(brain, gameType, filePath) {
             detail: result.reason,
             status: '',
             timestamp: new Date().toISOString(),
-            scoreT: result.scoreT,
-            scoreX: result.scoreX,
-            streak: result.streak,
-            autoFixed: result.autoFixed || false
+            probT: result.probT || 50,
+            probX: result.probX || 50,
+            strategyCount: result.strategyCount || 0
         };
-
         brain.predictionCache.unshift(rec);
         if (brain.predictionCache.length > 300) brain.predictionCache.length = 300;
         brain.lastSession = cur;
         savePredictor(brain, filePath);
-
-        const autoFixTag = result.autoFixed ? ' ⚡AUTO-FIX' : '';
-        console.log(
-            `[${gameType.toUpperCase()}] #${ns} → ${rec.prediction} (${rec.confidence}%)${autoFixTag} | T:${result.scoreT} X:${result.scoreX} | ${result.reason}`
-            );
+        console.log(`[${gameType.toUpperCase()}] #${ns} -> ${rec.prediction} (${rec.confidence}%) | ${result.strategyCount} chien luoc | ${result.reason}`);
     } catch (err) {
         console.error('Process error:', err.message);
     }
@@ -424,32 +602,38 @@ async function autoProcess() {
 function startAuto() {
     setTimeout(autoProcess, 2000);
     setInterval(autoProcess, 6000);
-    console.log('🤖 Siêu VIP Elite Auto-Processing (6s)\n');
+    console.log('Deep Learning Auto-Processing (6s)\n');
 }
 
-// ═══════════════════════════════════════════
-// CSS - GIAO DIỆN SIÊU VIP CUỐN HÚT
-// ═══════════════════════════════════════════
+// ==========================================
+// CSS TIM PREMIUM - KHONG ICON - SIEU DEP
+// ==========================================
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root {
-    --bg: #050510;
-    --card: rgba(12, 16, 30, 0.95);
-    --blue: #5b9fff;
-    --blue2: #8dc4ff;
-    --cyan: #00e0ff;
+    --bg: #0a0515;
+    --bg2: #0f0a1e;
+    --card: rgba(20, 12, 40, 0.96);
+    --purple: #9b59ff;
+    --purple2: #b980ff;
+    --purple3: #c9a0ff;
+    --purple4: #7c3aed;
+    --pink: #e040fb;
+    --deep: #4a1d96;
     --green: #00ff88;
-    --red: #ff4060;
+    --red: #ff4470;
     --gold: #ffd740;
-    --purple: #a78bfa;
-    --text: #e8edf8;
-    --text2: #8899bb;
-    --border: rgba(91, 159, 255, 0.18);
-    --radius: 22px;
+    --text: #ede8f8;
+    --text2: #9a8db8;
+    --text3: #6b5e8a;
+    --border: rgba(155, 89, 255, 0.18);
+    --border2: rgba(155, 89, 255, 0.3);
+    --radius: 24px;
     --radius-sm: 16px;
-    --shadow: 0 30px 80px rgba(0,0,0,0.7);
-    --glow: 0 0 40px rgba(91,159,255,0.15);
+    --shadow: 0 35px 90px rgba(0,0,0,0.75);
+    --glow: 0 0 60px rgba(155,89,255,0.15);
+    --glow2: 0 0 40px rgba(155,89,255,0.25);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -457,6 +641,11 @@ const CSS = `
 body {
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
     background: var(--bg);
+    background-image: 
+        radial-gradient(ellipse at 20% 20%, rgba(155,89,255,0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 60%, rgba(224,64,251,0.08) 0%, transparent 45%),
+        radial-gradient(ellipse at 50% 90%, rgba(124,58,237,0.1) 0%, transparent 50%),
+        radial-gradient(ellipse at 60% 30%, rgba(185,128,255,0.06) 0%, transparent 55%);
     color: var(--text);
     min-height: 100vh;
     display: flex;
@@ -469,111 +658,117 @@ body {
 .aurora {
     position: fixed; inset: 0; z-index: 0; pointer-events: none;
     background: 
-        radial-gradient(ellipse at 15% 40%, rgba(91,159,255,0.1) 0%, transparent 50%),
-        radial-gradient(ellipse at 85% 25%, rgba(0,224,255,0.07) 0%, transparent 45%),
-        radial-gradient(ellipse at 45% 85%, rgba(167,139,250,0.06) 0%, transparent 50%),
-        radial-gradient(ellipse at 60% 50%, rgba(255,64,96,0.03) 0%, transparent 55%);
-    animation: auroraFlow 25s ease-in-out infinite;
+        radial-gradient(ellipse at 15% 35%, rgba(155,89,255,0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 25%, rgba(224,64,251,0.1) 0%, transparent 45%),
+        radial-gradient(ellipse at 45% 80%, rgba(124,58,237,0.12) 0%, transparent 50%);
+    animation: auroraFlow 28s ease-in-out infinite;
 }
 @keyframes auroraFlow {
-    0%,100% { opacity: 0.7; transform: scale(1); }
-    25% { opacity: 0.9; transform: scale(1.05); }
-    50% { opacity: 0.75; transform: scale(1); }
-    75% { opacity: 0.95; transform: scale(1.03); }
+    0%,100% { opacity: 0.7; transform: scale(1) rotate(0deg); }
+    33% { opacity: 0.9; transform: scale(1.06) rotate(1deg); }
+    66% { opacity: 0.75; transform: scale(1.03) rotate(-1deg); }
 }
 
-.stars { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
-.star {
-    position: absolute; width: 2px; height: 2px;
-    background: #fff; border-radius: 50%;
-    animation: twinkle var(--dur) ease-in-out infinite;
-    animation-delay: var(--delay);
-    box-shadow: 0 0 6px rgba(255,255,255,0.5);
+.particles {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
 }
-@keyframes twinkle {
-    0%,100% { opacity: 0.15; transform: scale(1); }
-    50% { opacity: 1; transform: scale(2); }
+.particle {
+    position: absolute; width: 2px; height: 2px;
+    background: var(--purple3); border-radius: 50%;
+    animation: float var(--dur) ease-in-out infinite;
+    animation-delay: var(--delay);
+    box-shadow: 0 0 10px rgba(155,89,255,0.8);
+    opacity: 0.7;
+}
+@keyframes float {
+    0%,100% { transform: translateY(0) scale(1); opacity: 0.3; }
+    25% { transform: translateY(-30px) scale(1.5); opacity: 0.8; }
+    50% { transform: translateY(-15px) scale(1); opacity: 0.5; }
+    75% { transform: translateY(-40px) scale(2); opacity: 1; }
 }
 
 .app { position: relative; z-index: 10; width: 100%; max-width: 440px; padding: 10px; }
 
 .card {
     background: var(--card);
-    backdrop-filter: blur(60px);
-    -webkit-backdrop-filter: blur(60px);
+    backdrop-filter: blur(80px);
+    -webkit-backdrop-filter: blur(80px);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 30px 22px;
+    padding: 32px 22px;
     box-shadow: var(--shadow), var(--glow);
     position: relative; overflow: hidden;
-    animation: cardIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: cardIn 0.7s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes cardIn {
-    from { opacity: 0; transform: translateY(30px); }
+    from { opacity: 0; transform: translateY(40px); }
     to { opacity: 1; transform: translateY(0); }
 }
 .card::before {
-    content: ''; position: absolute; top: 0; left: 15px; right: 15px; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--blue), var(--cyan), transparent);
+    content: ''; position: absolute; top: 0; left: 12px; right: 12px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--purple), var(--pink), transparent);
     opacity: 0.5;
 }
 .card::after {
-    content: ''; position: absolute; bottom: 0; left: 15px; right: 15px; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--purple), var(--blue), transparent);
+    content: ''; position: absolute; bottom: 0; left: 12px; right: 12px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--purple2), var(--purple), transparent);
     opacity: 0.3;
 }
 
-/* Logo */
-.logo { text-align: center; margin-bottom: 8px; }
-.logo-crown {
-    font-size: 42px; animation: crownFloat 2.5s ease-in-out infinite;
-    display: inline-block; filter: drop-shadow(0 0 20px rgba(255,215,64,0.5));
+.brand { text-align: center; margin-bottom: 6px; }
+.brand-symbol {
+    font-size: 44px; font-weight: 900; line-height: 1;
+    font-family: 'Space Grotesk', sans-serif;
+    background: linear-gradient(135deg, var(--purple3), var(--pink), var(--purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: symbolFloat 3s ease-in-out infinite;
+    display: inline-block;
+    filter: drop-shadow(0 0 30px rgba(155,89,255,0.6));
 }
-@keyframes crownFloat {
-    0%,100% { transform: translateY(0) rotate(0deg); }
-    25% { transform: translateY(-8px) rotate(-3deg); }
-    75% { transform: translateY(-4px) rotate(3deg); }
+@keyframes symbolFloat {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
 }
-.logo-text {
+.brand-name {
     font-family: 'Space Grotesk', 'Inter', sans-serif;
-    font-size: 28px; font-weight: 800; letter-spacing: 6px;
-    background: linear-gradient(135deg, var(--cyan), var(--blue), var(--purple));
+    font-size: 28px; font-weight: 800; letter-spacing: 7px;
+    background: linear-gradient(135deg, var(--purple3), var(--pink), var(--purple2));
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-clip: text;
     margin-top: 4px;
-    text-shadow: none;
 }
-.logo-badge {
+.brand-badge {
     display: inline-block; margin-top: 10px;
-    background: linear-gradient(135deg, rgba(91,159,255,0.2), rgba(167,139,250,0.18));
-    border: 1px solid rgba(91,159,255,0.3);
-    color: var(--blue2); font-size: 9px; font-weight: 700;
+    background: linear-gradient(135deg, rgba(155,89,255,0.25), rgba(224,64,251,0.15));
+    border: 1px solid var(--border2);
+    color: var(--purple3); font-size: 9px; font-weight: 700;
     letter-spacing: 4px; padding: 7px 18px; border-radius: 20px;
 }
 
-.zalo-contact {
+.contact-bar {
     text-align: center; margin-top: 14px; padding: 12px;
-    background: linear-gradient(135deg, rgba(0,180,255,0.08), rgba(167,139,250,0.06));
-    border: 1px solid rgba(91,159,255,0.2);
-    border-radius: 14px; font-size: 11px; color: var(--blue2);
+    background: linear-gradient(135deg, rgba(155,89,255,0.1), rgba(224,64,251,0.06));
+    border: 1px solid var(--border);
+    border-radius: 14px; font-size: 11px; color: var(--purple2);
     letter-spacing: 1px; transition: all 0.3s;
 }
-.zalo-contact:hover { border-color: rgba(91,159,255,0.4); box-shadow: 0 0 20px rgba(91,159,255,0.1); }
-.zalo-contact a { color: var(--cyan); text-decoration: none; font-weight: 700; }
+.contact-bar:hover { border-color: var(--border2); box-shadow: 0 0 20px rgba(155,89,255,0.15); }
+.contact-bar a { color: var(--purple3); text-decoration: none; font-weight: 700; }
 
 .input-wrap { margin-top: 20px; position: relative; }
 .input-wrap input {
     width: 100%; padding: 16px 24px;
-    background: rgba(0,0,0,0.5); border: 1px solid var(--border);
+    background: rgba(10,5,25,0.6); border: 1px solid var(--border);
     border-radius: var(--radius-sm); color: #fff; font-size: 15px;
     text-align: center; letter-spacing: 5px; outline: none; transition: 0.4s;
     font-family: 'Space Grotesk', monospace;
 }
 .input-wrap input:focus {
-    border-color: var(--blue);
-    box-shadow: 0 0 30px rgba(91,159,255,0.25), inset 0 0 20px rgba(91,159,255,0.05);
+    border-color: var(--purple);
+    box-shadow: 0 0 35px rgba(155,89,255,0.3), inset 0 0 25px rgba(155,89,255,0.08);
 }
-.input-wrap input::placeholder { color: var(--text2); letter-spacing: 2px; }
+.input-wrap input::placeholder { color: var(--text3); letter-spacing: 2px; }
 
 .btn {
     width: 100%; padding: 16px; margin-top: 16px; border: none;
@@ -581,8 +776,8 @@ body {
     cursor: pointer; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     display: flex; align-items: center; justify-content: center; gap: 10px;
     color: #fff; letter-spacing: 1px;
-    background: linear-gradient(135deg, var(--blue), #4070d0);
-    box-shadow: 0 10px 30px rgba(91,159,255,0.3);
+    background: linear-gradient(135deg, var(--purple4), var(--purple));
+    box-shadow: 0 12px 35px rgba(155,89,255,0.4);
     position: relative; overflow: hidden;
 }
 .btn::after {
@@ -590,78 +785,75 @@ body {
     background: linear-gradient(135deg, transparent, rgba(255,255,255,0.1), transparent);
     transition: transform 0.5s;
 }
-.btn:hover { transform: translateY(-3px); box-shadow: 0 18px 45px rgba(91,159,255,0.5); }
+.btn:hover { transform: translateY(-3px); box-shadow: 0 20px 50px rgba(155,89,255,0.6); }
 .btn:active { transform: scale(0.96); }
 .btn-outline {
     background: transparent; border: 1px solid var(--border);
     color: var(--text); box-shadow: none;
 }
-.btn-outline:hover { background: rgba(255,255,255,0.03); border-color: var(--blue); }
+.btn-outline:hover { background: rgba(155,89,255,0.06); border-color: var(--purple); }
 
 .game-cards { display: flex; flex-direction: column; gap: 14px; margin-top: 20px; }
 .game-card {
-    background: rgba(91,159,255,0.03); border: 1px solid var(--border);
+    background: rgba(155,89,255,0.04); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 22px; cursor: pointer;
     transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     display: flex; align-items: center; gap: 18px;
     position: relative; overflow: hidden;
 }
 .game-card:hover {
-    background: rgba(91,159,255,0.08); border-color: var(--blue);
-    transform: translateY(-4px); box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    background: rgba(155,89,255,0.1); border-color: var(--purple);
+    transform: translateY(-4px); box-shadow: 0 22px 55px rgba(0,0,0,0.55);
 }
 .game-card::after {
     content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
-    background: linear-gradient(180deg, var(--blue), var(--cyan), var(--purple));
+    background: linear-gradient(180deg, var(--purple), var(--pink), var(--purple2));
     opacity: 0; transition: 0.4s; border-radius: 0 4px 4px 0;
 }
 .game-card:hover::after { opacity: 1; }
-.game-icon {
-    width: 58px; height: 58px;
-    background: linear-gradient(135deg, rgba(91,159,255,0.15), rgba(167,139,250,0.1));
-    border-radius: 18px; display: flex; align-items: center;
-    justify-content: center; font-size: 28px; flex-shrink: 0;
-    transition: all 0.3s;
+.game-label {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px; font-weight: 700; color: var(--purple3);
+    letter-spacing: 2px;
 }
-.game-card:hover .game-icon { transform: scale(1.08); box-shadow: 0 0 25px rgba(91,159,255,0.2); }
 .game-name { font-weight: 700; font-size: 18px; letter-spacing: 1px; }
-.game-desc { font-size: 11px; color: var(--text2); margin-top: 4px; }
-.game-arrow {
-    margin-left: auto; color: var(--text2); font-size: 20px;
+.game-desc { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.game-action {
+    margin-left: auto; color: var(--text3); font-size: 16px;
     transition: all 0.4s; font-weight: 300;
 }
-.game-card:hover .game-arrow { color: var(--cyan); transform: translateX(6px); }
+.game-card:hover .game-action { color: var(--pink); transform: translateX(6px); }
 
 .predict-box {
-    background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+    background: rgba(10,5,25,0.5); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 28px; text-align: center;
     margin-top: 16px; position: relative;
 }
 .predict-box::before {
     content: ''; position: absolute; inset: -1px; border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(135deg, var(--blue), transparent, var(--cyan), transparent, var(--purple));
+    background: linear-gradient(135deg, var(--purple), transparent, var(--pink), transparent, var(--purple2));
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor; mask-composite: exclude;
-    opacity: 0.5;
+    opacity: 0.55;
 }
 .predict-label {
-    font-size: 10px; color: var(--text2); letter-spacing: 4px;
+    font-size: 10px; color: var(--text3); letter-spacing: 4px;
     margin-bottom: 10px; text-transform: uppercase; font-weight: 600;
 }
 .predict-value {
-    font-size: 68px; font-weight: 900; line-height: 1;
+    font-size: 72px; font-weight: 900; line-height: 1;
     font-family: 'Space Grotesk', sans-serif;
-    animation: predictPulse 2s ease-in-out infinite;
+    animation: predictPulse 2.5s ease-in-out infinite;
 }
 @keyframes predictPulse {
     0%,100% { transform: scale(1); }
-    50% { transform: scale(1.03); }
+    50% { transform: scale(1.04); }
 }
-.tai { color: var(--green); text-shadow: 0 0 60px rgba(0,255,136,0.6); }
-.xiu { color: var(--red); text-shadow: 0 0 60px rgba(255,64,96,0.6); }
-.waiting { color: var(--gold); text-shadow: 0 0 40px rgba(255,215,64,0.5); }
+.tai { color: var(--green); text-shadow: 0 0 70px rgba(0,255,136,0.7); }
+.xiu { color: var(--red); text-shadow: 0 0 70px rgba(255,68,112,0.7); }
+.waiting { color: var(--gold); text-shadow: 0 0 50px rgba(255,215,64,0.6); }
 
 .conf-bar {
     height: 8px; background: rgba(255,255,255,0.04);
@@ -669,29 +861,34 @@ body {
 }
 .conf-fill {
     height: 100%; border-radius: 4px;
-    background: linear-gradient(90deg, var(--blue), var(--cyan), var(--purple));
+    background: linear-gradient(90deg, var(--purple4), var(--purple), var(--pink));
     transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 0 20px rgba(91,159,255,0.5);
+    box-shadow: 0 0 25px rgba(155,89,255,0.6);
 }
 .conf-text {
     display: flex; justify-content: space-between; margin-top: 8px;
-    font-size: 10px; color: var(--text2); font-weight: 500;
+    font-size: 10px; color: var(--text3); font-weight: 500;
 }
-.conf-text span:last-child { color: var(--blue2); font-weight: 700; }
+.conf-text span:last-child { color: var(--purple3); font-weight: 700; }
+
+.learning-info {
+    text-align: center; margin-top: 8px; font-size: 9px; color: var(--purple2);
+    letter-spacing: 2px;
+}
 
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
 .stat-cell {
-    background: rgba(91,159,255,0.04); border: 1px solid var(--border);
+    background: rgba(155,89,255,0.04); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 18px; text-align: center;
     transition: all 0.3s;
 }
-.stat-cell:hover { background: rgba(91,159,255,0.08); border-color: rgba(91,159,255,0.3); transform: translateY(-2px); }
-.stat-value { font-size: 22px; font-weight: 700; color: var(--blue2); font-family: 'Space Grotesk', monospace; }
-.stat-label { font-size: 8px; color: var(--text2); margin-top: 5px; letter-spacing: 2px; text-transform: uppercase; }
+.stat-cell:hover { background: rgba(155,89,255,0.08); border-color: var(--border2); transform: translateY(-2px); }
+.stat-value { font-size: 22px; font-weight: 700; color: var(--purple3); font-family: 'Space Grotesk', monospace; }
+.stat-label { font-size: 8px; color: var(--text3); margin-top: 5px; letter-spacing: 2px; text-transform: uppercase; }
 
 .history-section { margin-top: 22px; }
 .history-title {
-    font-size: 11px; color: var(--blue2); letter-spacing: 3px;
+    font-size: 11px; color: var(--purple3); letter-spacing: 3px;
     text-align: center; margin-bottom: 14px; font-weight: 600;
 }
 .history-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
@@ -699,32 +896,32 @@ body {
 .history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .history-item {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 16px; background: rgba(0,0,0,0.25);
-    border: 1px solid rgba(91,159,255,0.08); border-radius: 12px;
+    padding: 12px 16px; background: rgba(10,5,25,0.4);
+    border: 1px solid rgba(155,89,255,0.08); border-radius: 12px;
     font-size: 10px; transition: all 0.2s;
 }
-.history-item:hover { background: rgba(91,159,255,0.06); border-color: rgba(91,159,255,0.2); }
-.h-session { color: var(--blue2); font-weight: 700; min-width: 50px; font-family: 'Space Grotesk', monospace; }
+.history-item:hover { background: rgba(155,89,255,0.06); border-color: rgba(155,89,255,0.2); }
+.h-session { color: var(--purple3); font-weight: 700; min-width: 50px; font-family: 'Space Grotesk', monospace; }
 .h-result { padding: 4px 14px; border-radius: 10px; font-weight: 700; font-size: 11px; }
 .h-tai { background: rgba(0,255,136,0.12); color: var(--green); }
-.h-xiu { background: rgba(255,64,96,0.12); color: var(--red); }
+.h-xiu { background: rgba(255,68,112,0.12); color: var(--red); }
 .h-status { font-size: 9px; padding: 3px 10px; border-radius: 8px; font-weight: 600; }
 .h-dung { background: rgba(0,255,136,0.1); color: var(--green); }
-.h-sai { background: rgba(255,64,96,0.1); color: var(--red); }
+.h-sai { background: rgba(255,68,112,0.1); color: var(--red); }
 .h-cho { background: rgba(255,215,64,0.08); color: var(--gold); }
 
 .btn-back {
     background: transparent; border: 1px solid var(--border);
-    color: var(--text2); padding: 8px 18px; border-radius: 18px;
+    color: var(--text3); padding: 8px 18px; border-radius: 18px;
     cursor: pointer; font-size: 10px; margin-bottom: 14px; transition: all 0.3s;
     display: inline-block; letter-spacing: 1px;
 }
-.btn-back:hover { border-color: var(--blue); color: var(--blue2); }
+.btn-back:hover { border-color: var(--purple); color: var(--purple3); }
 
 .footer {
     text-align: center; margin-top: 22px; padding-top: 16px;
-    border-top: 1px solid rgba(255,255,255,0.04);
-    font-size: 8px; color: var(--text2); letter-spacing: 3px;
+    border-top: 1px solid rgba(155,89,255,0.08);
+    font-size: 8px; color: var(--text3); letter-spacing: 3px;
 }
 
 .warn-badge {
@@ -735,75 +932,70 @@ body {
 }
 @keyframes warnBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-.reliability-badge {
-    display: inline-block; padding: 4px 10px; border-radius: 8px;
-    font-size: 9px; font-weight: 600; letter-spacing: 1px;
-    margin-left: 6px;
-}
-.rel-high { background: rgba(0,255,136,0.1); color: var(--green); }
-.rel-medium { background: rgba(255,215,64,0.1); color: var(--gold); }
-.rel-low { background: rgba(255,64,96,0.1); color: var(--red); }
-
 @media (max-width: 380px) {
     .card { padding: 20px 14px; }
-    .predict-value { font-size: 52px; }
+    .predict-value { font-size: 54px; }
     .game-card { padding: 16px; }
-    .game-icon { width: 46px; height: 46px; font-size: 22px; }
+    .brand-symbol { font-size: 34px; }
+    .brand-name { font-size: 22px; }
 }
 `;
 
-// ═══════════════ RENDER PAGES ═══════════════
+// ==========================================
+// RENDER PAGES
+// ==========================================
 function loginPage() {
-    const stars = Array.from({ length: 50 }, (_, i) =>
-        `<div class="star" style="left:${Math.random()*100}%;top:${Math.random()*100}%;--dur:${2+Math.random()*5}s;--delay:${Math.random()*6}s"></div>`
+    const particles = Array.from({ length: 50 }, (_, i) =>
+        `<div class="particle" style="left:${Math.random()*100}%;top:${Math.random()*100}%;--dur:${3+Math.random()*7}s;--delay:${Math.random()*8}s"></div>`
     ).join('');
 
-    return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"><title>ANH KHOI SIÊU VIP</title><style>${CSS}</style></head><body><div class="aurora"></div><div class="stars">${stars}</div><div class="app"><div class="card"><div class="logo"><div class="logo-crown">👑</div><div class="logo-text">ANH KHOI</div><div class="logo-badge">SIÊU VIP ELITE</div></div><p style="text-align:center;font-size:12px;color:var(--text2);margin-top:12px;line-height:1.8">🔮 Phân tích độc quyền • Dự đoán chuẩn xác<br>📊 Thuật toán đa tầng • Auto-Correct thông minh</p><div class="zalo-contact">📞 Zalo Đại Ca: <a href="https://zalo.me/${ZALO_DAICA}">${ZALO_DAICA}</a> - ${DAICA_NAME}</div><div class="input-wrap"><input type="password" id="key" placeholder="Nhập mã truy cập..." autocomplete="off"></div><button class="btn" onclick="doLogin()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="9" rx="2"/><path d="M7 11V8a5 5 0 0110 0v3"/></svg>TRUY CẬP SIÊU VIP</button><div id="msg" style="text-align:center;margin-top:12px;font-size:11px"></div><div class="footer">ANH KHOI SIÊU VIP • PHÂN TÍCH ĐỘC QUYỀN • CHUẨN XÁC</div></div></div><script>
-function doLogin(){var k=document.getElementById('key').value.trim();var m=document.getElementById('msg');if(!k){m.innerHTML='<span style="color:var(--red)">Nhập mã truy cập đi Đại Ca!</span>';return}m.innerHTML='<span style="color:var(--blue)">Đang xác thực...</span>';fetch('/_api/access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})}).then(r=>r.json()).then(d=>{if(d.token)window.location.href='/_home?_token='+d.token;else m.innerHTML='<span style="color:var(--gold)">Sai mã rồi Đại Ca ơi!</span>'}).catch(function(){m.innerHTML='<span style="color:var(--red)">Lỗi kết nối!</span>'});}
+    return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"><title>ANH KHOI DEEP LEARNING</title><style>${CSS}</style></head><body><div class="aurora"></div><div class="particles">${particles}</div><div class="app"><div class="card"><div class="brand"><div class="brand-symbol">AK</div><div class="brand-name">ANH KHOI</div><div class="brand-badge">DEEP LEARNING</div></div><p style="text-align:center;font-size:12px;color:var(--text3);margin-top:12px;line-height:1.8">Hoc sau thich ung - Cang chay cang chinh xac<br>Markov - Bayesian - Reinforcement Learning</p><div class="contact-bar">Zalo Dai Ca: <a href="https://zalo.me/${ZALO_DAICA}">${ZALO_DAICA}</a> - ${DAICA_NAME}</div><div class="input-wrap"><input type="password" id="key" placeholder="Nhap ma truy cap..." autocomplete="off"></div><button class="btn" onclick="doLogin()">TRUY CAP HE THONG</button><div id="msg" style="text-align:center;margin-top:12px;font-size:11px"></div><div class="footer">ANH KHOI DEEP LEARNING - HOC SAU - CHINH XAC</div></div></div><script>
+function doLogin(){var k=document.getElementById('key').value.trim();var m=document.getElementById('msg');if(!k){m.innerHTML='<span style="color:var(--red)">Nhap ma truy cap!</span>';return}m.innerHTML='<span style="color:var(--purple3)">Dang xac thuc...</span>';fetch('/_api/access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k})}).then(r=>r.json()).then(d=>{if(d.token)window.location.href='/_home?_token='+d.token;else m.innerHTML='<span style="color:var(--gold)">Sai ma truy cap!</span>'}).catch(function(){m.innerHTML='<span style="color:var(--red)">Loi ket noi!</span>'});}
 document.getElementById('key').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
 </script></body></html>`;
 }
 
 function homePage(token) {
-    const stars = Array.from({ length: 35 }, (_, i) =>
-        `<div class="star" style="left:${Math.random()*100}%;top:${Math.random()*100}%;--dur:${2+Math.random()*5}s;--delay:${Math.random()*6}s"></div>`
+    const particles = Array.from({ length: 40 }, (_, i) =>
+        `<div class="particle" style="left:${Math.random()*100}%;top:${Math.random()*100}%;--dur:${3+Math.random()*7}s;--delay:${Math.random()*8}s"></div>`
     ).join('');
 
-    return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"><title>ANH KHOI SIÊU VIP | CHỌN SẢNH</title><style>${CSS}</style></head><body><div class="aurora"></div><div class="stars">${stars}</div><div class="app"><div class="card"><div class="logo"><div class="logo-crown">👑</div><div class="logo-text" style="font-size:24px">ANH KHOI</div><div class="logo-badge">SIÊU VIP ELITE</div></div><p style="text-align:center;font-size:14px;font-weight:700;color:var(--blue2);margin:14px 0;letter-spacing:3px">⚡ CHỌN SẢNH PHÂN TÍCH ⚡</p><div class="zalo-contact">📞 Zalo Đại Ca: <a href="https://zalo.me/${ZALO_DAICA}">${ZALO_DAICA}</a> - ${DAICA_NAME}</div><div class="game-cards"><div class="game-card" onclick="location.href='/_hu?_token=${token}'"><div class="game-icon">🎰</div><div><div class="game-name">TÀI XỈU HŨ</div><div class="game-desc">Phân tích vòng quay • Dự đoán nổ hũ</div></div><div class="game-arrow">→</div></div><div class="game-card" onclick="location.href='/_md5?_token=${token}'"><div class="game-icon">🔐</div><div><div class="game-name">TÀI XỈU MD5</div><div class="game-desc">Giải mã chuỗi băm • Dự đoán siêu tốc</div></div><div class="game-arrow">→</div></div></div><div style="text-align:center;margin-top:20px"><button class="btn-back" onclick="location.href='/_login'">Đăng xuất</button></div><div class="footer">ANH KHOI SIÊU VIP • PHÂN TÍCH ĐỘC QUYỀN</div></div></div></body></html>`;
+    return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"><title>ANH KHOI DEEP LEARNING | CHON SANH</title><style>${CSS}</style></head><body><div class="aurora"></div><div class="particles">${particles}</div><div class="app"><div class="card"><div class="brand"><div class="brand-symbol">AK</div><div class="brand-name" style="font-size:24px">ANH KHOI</div><div class="brand-badge">DEEP LEARNING</div></div><p style="text-align:center;font-size:14px;font-weight:700;color:var(--purple3);margin:14px 0;letter-spacing:3px">CHON SANH PHAN TICH</p><div class="contact-bar">Zalo Dai Ca: <a href="https://zalo.me/${ZALO_DAICA}">${ZALO_DAICA}</a> - ${DAICA_NAME}</div><div class="game-cards"><div class="game-card" onclick="location.href='/_hu?_token=${token}'"><div class="game-label">HU</div><div><div class="game-name">TAI XIU HU</div><div class="game-desc">Deep Learning - Du doan no hu</div></div><div class="game-action">--></div></div><div class="game-card" onclick="location.href='/_md5?_token=${token}'"><div class="game-label">MD5</div><div><div class="game-name">TAI XIU MD5</div><div class="game-desc">Deep Learning - Du doan sieu toc</div></div><div class="game-action">--></div></div></div><div style="text-align:center;margin-top:20px"><button class="btn-back" onclick="location.href='/_login'">Dang xuat</button></div><div class="footer">ANH KHOI DEEP LEARNING - HOC SAU THICH UNG</div></div></div></body></html>`;
 }
 
 function predictPage(brain, gameType, token) {
-    const stars = Array.from({ length: 25 }, (_, i) =>
-        `<div class="star" style="left:${Math.random()*100}%;top:${Math.random()*100}%;--dur:${2+Math.random()*5}s;--delay:${Math.random()*6}s"></div>`
+    const particles = Array.from({ length: 30 }, (_, i) =>
+        `<div class="particle" style="left:${Math.random()*100}%;top:${Math.random()*100}%;--dur:${3+Math.random()*7}s;--delay:${Math.random()*8}s"></div>`
     ).join('');
 
     const cache = brain.predictionCache || [];
     const recent = cache.length > 0 ? cache[0] : null;
     const pred = recent ? recent.prediction : '...';
     const conf = recent ? recent.confidence : 0;
-    const cls = pred === 'Tài' ? 'tai' : pred === 'Xỉu' ? 'xiu' : 'waiting';
-    const gameName = gameType === 'hu' ? 'TÀI XỈU HŨ' : 'TÀI XỈU MD5';
-    const icon = gameType === 'hu' ? '🎰' : '🔐';
+    const cls = pred === 'Tai' ? 'tai' : pred === 'Xiu' ? 'xiu' : 'waiting';
+    const gameName = gameType === 'hu' ? 'TAI XIU HU' : 'TAI XIU MD5';
+    const gameLabel = gameType === 'hu' ? 'HU' : 'MD5';
     const wr = brain.getWinRate();
     const reliability = brain.getReliability();
-    const relClass = wr >= 75 ? 'rel-high' : wr >= 55 ? 'rel-medium' : 'rel-low';
-    const warnHTML = brain.consecutiveLoss >= 3 ? '<span class="warn-badge">⚡ AUTO-CORRECT</span>' : '';
-    const autoFixTag = recent && recent.autoFixed ? ' <span style="font-size:9px;color:var(--gold)">(Đã tự sửa)</span>' :
-        '';
+    const warnHTML = brain.consecutiveLoss >= 3 ? '<span class="warn-badge">AUTO-CORRECT</span>' : '';
+    const strategyCount = recent ? recent.strategyCount || 0 : 0;
+    const learningRate = brain.learningRate.toFixed(3);
 
     let histHTML = '';
     for (let i = 0; i < Math.min(cache.length, 25); i++) {
         const r = cache[i];
-        const st = r.status || 'CHỜ';
-        const stCls = st === 'ĐÚNG' ? 'h-dung' : st === 'SAI' ? 'h-sai' : 'h-cho';
-        const resCls = r.prediction === 'Tài' ? 'h-tai' : r.prediction === 'Xỉu' ? 'h-xiu' : '';
-        histHTML += `<div class="history-item"><span class="h-session">#${r.nextSession||'-'}</span><span style="font-size:9px;color:var(--text2)">${gameType==='hu'?'Hũ':'MD5'}</span><span class="h-status ${stCls}">${st}</span><span style="font-size:8px;color:var(--text2)">${(r.timestamp||'').substring(11,16)||'--:--'}</span><span class="h-result ${resCls}">${r.prediction||'--'}</span></div>`;
+        const st = r.status || 'CHO';
+        const stCls = st === 'DUNG' ? 'h-dung' : st === 'SAI' ? 'h-sai' : 'h-cho';
+        const resCls = r.prediction === 'Tai' ? 'h-tai' : r.prediction === 'Xiu' ? 'h-xiu' : '';
+        histHTML += `<div class="history-item"><span class="h-session">#${r.nextSession||'-'}</span><span style="font-size:9px;color:var(--text3)">${gameLabel}</span><span class="h-status ${stCls}">${st}</span><span style="font-size:8px;color:var(--text3)">${(r.timestamp||'').substring(11,16)||'--:--'}</span><span class="h-result ${resCls}">${r.prediction||'--'}</span></div>`;
     }
 
-    return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"><title>${gameName} | ANH KHOI SIÊU VIP</title><style>${CSS}</style></head><body><div class="aurora"></div><div class="stars">${stars}</div><div class="app"><div class="card"><button class="btn-back" onclick="location.href='/_home?_token=${token}'">← Quay lại</button><div class="logo"><div style="font-size:38px">${icon}</div><div class="logo-badge">${gameName}${warnHTML}</div></div><div class="zalo-contact">📞 Zalo Đại Ca: <a href="https://zalo.me/${ZALO_DAICA}">${ZALO_DAICA}</a> - ${DAICA_NAME}</div><div class="predict-box"><div class="predict-label">🔮 DỰ ĐOÁN SIÊU VIP ${autoFixTag}</div><div class="predict-value ${cls}">${pred}</div><div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div><div class="conf-text"><span>Độ tin cậy phân tích</span><span>${conf}%</span></div></div><div class="stats-grid"><div class="stat-cell"><div class="stat-value" style="color:var(--green)">${brain.stats.correct}</div><div class="stat-label">Lần Phân Tích Đúng</div></div><div class="stat-cell"><div class="stat-value" style="color:var(--red)">${brain.stats.wrong}</div><div class="stat-label">Lần Phân Tích Sai</div></div><div class="stat-cell"><div class="stat-value" style="color:${wr>=65?'var(--green)':wr>=50?'var(--gold)':'var(--red)'}">${wr}%</div><div class="stat-label">Tỷ Lệ Chính Xác</div></div><div class="stat-cell"><div class="stat-value" style="color:${brain.consecutiveLoss>=3?'var(--red)':'var(--blue2)'}">${brain.consecutiveLoss}</div><div class="stat-label">Sai Liên Tiếp</div></div></div><div style="text-align:center;margin-top:10px"><span class="reliability-badge ${relClass}">Độ tin cậy: ${reliability}</span></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn" style="flex:1" onclick="location.href='/_home?_token=${token}'">🏠 Trang Chủ</button><button class="btn btn-outline" style="flex:1" onclick="location.reload()">🔄 Làm Mới</button></div><div class="history-section"><div class="history-title">📋 LỊCH SỬ PHÂN TÍCH</div><div class="history-list">${histHTML || '<div style="text-align:center;color:var(--text2);padding:20px">Chưa có lịch sử phân tích</div>'}</div></div><div class="footer">ANH KHOI SIÊU VIP • ${gameType==='hu'?'SẢNH HŨ':'SẢNH MD5'} • PHÂN TÍCH ĐỘC QUYỀN</div></div></div><script>setTimeout(function(){location.reload()},8000);</script></body></html>`;
+    return `<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"><title>${gameName} | ANH KHOI DEEP LEARNING</title><style>${CSS}</style></head><body><div class="aurora"></div><div class="particles">${particles}</div><div class="app"><div class="card"><button class="btn-back" onclick="location.href='/_home?_token=${token}'">Quay lai</button><div class="brand"><div class="brand-symbol" style="font-size:34px">${gameLabel}</div><div class="brand-badge">${gameName}${warnHTML}</div></div><div class="contact-bar">Zalo Dai Ca: <a href="https://zalo.me/${ZALO_DAICA}">${ZALO_DAICA}</a> - ${DAICA_NAME}</div><div class="predict-box"><div class="predict-label">DU DOAN HOC SAU (${strategyCount} chien luoc)</div><div class="predict-value ${cls}">${pred}</div><div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div><div class="conf-text"><span>Do tin cay</span><span>${conf}%</span></div></div><div class="learning-info">Learning Rate: ${learningRate} | Do tin cay: ${reliability}</div><div class="stats-grid"><div class="stat-cell"><div class="stat-value" style="color:var(--green)">${brain.stats.correct}</div><div class="stat-label">Du Doan Dung</div></div><div class="stat-cell"><div class="stat-value" style="color:var(--red)">${brain.stats.wrong}</div><div class="stat-label">Du Doan Sai</div></div><div class="stat-cell"><div class="stat-value" style="color:${wr>=70?'var(--green)':wr>=55?'var(--gold)':'var(--red)'}">${wr}%</div><div class="stat-label">Ty Le Chinh Xac</div></div><div class="stat-cell"><div class="stat-value">${strategyCount}</div><div class="stat-label">Chien Luoc</div></div></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn" style="flex:1" onclick="location.href='/_home?_token=${token}'">Trang Chu</button><button class="btn btn-outline" style="flex:1" onclick="location.reload()">Lam Moi</button></div><div class="history-section"><div class="history-title">LICH SU HOC SAU</div><div class="history-list">${histHTML || '<div style="text-align:center;color:var(--text3);padding:20px">Dang hoc...</div>'}</div></div><div class="footer">ANH KHOI DEEP LEARNING v15 - ${gameLabel} SANH</div></div></div><script>setTimeout(function(){location.reload()},8000);</script></body></html>`;
 }
 
-// ═══════════════ MIDDLEWARE & ROUTES ═══════════════
+// ==========================================
+// MIDDLEWARE & ROUTES
+// ==========================================
 function checkAuth(req, res, next) {
     const token = req.query['_token'] || req.headers['x-token'];
     if (!token || !TOKEN_STORE.has(token)) return res.redirect('/_login');
@@ -817,19 +1009,17 @@ app.use((req, res, next) => {
     next();
 });
 
-app.get('/_login', (req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(loginPage()); });
+app.get('/_login', (req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.send(loginPage()); });
 app.get('/', (req, res) => res.redirect('/_login'));
 
 app.post('/_api/access', (req, res) => {
     const key = (req.body || {}).key;
-    if (!key) return res.status(400).json({ error: 'Thiếu mã' });
+    if (!key) return res.status(400).json({ error: 'Thieu ma' });
     if (key === MASTER_KEY) return res.json({ token: MASTER_TOKEN });
-    return res.status(401).json({ error: 'Sai mã' });
+    return res.status(401).json({ error: 'Sai ma' });
 });
 
-app.get('/_home', checkAuth, (req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(homePage(req.query['_token'])); });
+app.get('/_home', checkAuth, (req, res) => { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.send(homePage(req.query['_token'])); });
 
 app.get('/_hu', checkAuth, async (req, res) => {
     try {
@@ -838,14 +1028,13 @@ app.get('/_hu', checkAuth, async (req, res) => {
             for (const r of brainHU.predictionCache) {
                 if (r.status && r.status !== '') continue;
                 const actual = data.find(g => g.sessionId.toString() === r.nextSession);
-                if (actual) { r.status = (r.prediction === actual.result) ? 'ĐÚNG' : 'SAI';
-                    brainHU.learn(data, { prediction: r.prediction }, actual.result); }
+                if (actual) { r.status = (r.prediction === actual.result) ? 'DUNG' : 'SAI'; brainHU.learn(data, { prediction: r.prediction }, actual.result); }
             }
             const cur = data[0].sessionId;
             if (brainHU.lastSession !== cur) {
                 const ns = cur + 1;
                 if (!brainHU.predictionCache.some(r => r.nextSession === ns.toString())) {
-                    const result = brainHU.analyzeDeep(data);
+                    const result = brainHU.ensemblePredict(data);
                     brainHU.predictionCache.unshift({
                         session: cur, nextSession: ns.toString(),
                         dice: data[0].d1 + '-' + data[0].d2 + '-' + data[0].d3,
@@ -853,10 +1042,9 @@ app.get('/_hu', checkAuth, async (req, res) => {
                         prediction: result.prediction, confidence: result.confidence,
                         detail: result.reason, status: '',
                         timestamp: new Date().toISOString(),
-                        scoreT: result.scoreT, scoreX: result.scoreX,
-                        streak: result.streak, autoFixed: result.autoFixed || false
+                        probT: result.probT || 50, probX: result.probX || 50,
+                        strategyCount: result.strategyCount || 0
                     });
-                    if (brainHU.predictionCache.length > 300) brainHU.predictionCache.length = 300;
                 }
                 brainHU.lastSession = cur;
             }
@@ -874,14 +1062,13 @@ app.get('/_md5', checkAuth, async (req, res) => {
             for (const r of brainMD5.predictionCache) {
                 if (r.status && r.status !== '') continue;
                 const actual = data.find(g => g.sessionId.toString() === r.nextSession);
-                if (actual) { r.status = (r.prediction === actual.result) ? 'ĐÚNG' : 'SAI';
-                    brainMD5.learn(data, { prediction: r.prediction }, actual.result); }
+                if (actual) { r.status = (r.prediction === actual.result) ? 'DUNG' : 'SAI'; brainMD5.learn(data, { prediction: r.prediction }, actual.result); }
             }
             const cur = data[0].sessionId;
             if (brainMD5.lastSession !== cur) {
                 const ns = cur + 1;
                 if (!brainMD5.predictionCache.some(r => r.nextSession === ns.toString())) {
-                    const result = brainMD5.analyzeDeep(data);
+                    const result = brainMD5.ensemblePredict(data);
                     brainMD5.predictionCache.unshift({
                         session: cur, nextSession: ns.toString(),
                         dice: data[0].d1 + '-' + data[0].d2 + '-' + data[0].d3,
@@ -889,10 +1076,9 @@ app.get('/_md5', checkAuth, async (req, res) => {
                         prediction: result.prediction, confidence: result.confidence,
                         detail: result.reason, status: '',
                         timestamp: new Date().toISOString(),
-                        scoreT: result.scoreT, scoreX: result.scoreX,
-                        streak: result.streak, autoFixed: result.autoFixed || false
+                        probT: result.probT || 50, probX: result.probX || 50,
+                        strategyCount: result.strategyCount || 0
                     });
-                    if (brainMD5.predictionCache.length > 300) brainMD5.predictionCache.length = 300;
                 }
                 brainMD5.lastSession = cur;
             }
@@ -903,7 +1089,6 @@ app.get('/_md5', checkAuth, async (req, res) => {
     res.send(predictPage(brainMD5, 'md5', req.query['_token']));
 });
 
-// API JSON
 app.get('/_api/hu', checkAuth, async (req, res) => {
     try {
         const data = await fetchData('hu');
@@ -911,7 +1096,7 @@ app.get('/_api/hu', checkAuth, async (req, res) => {
             const cur = data[0].sessionId;
             const ns = cur + 1;
             if (!brainHU.predictionCache.some(r => r.nextSession === ns.toString())) {
-                const result = brainHU.analyzeDeep(data);
+                const result = brainHU.ensemblePredict(data);
                 brainHU.predictionCache.unshift({
                     session: cur, nextSession: ns.toString(),
                     dice: data[0].d1 + '-' + data[0].d2 + '-' + data[0].d3,
@@ -919,8 +1104,8 @@ app.get('/_api/hu', checkAuth, async (req, res) => {
                     prediction: result.prediction, confidence: result.confidence,
                     detail: result.reason, status: '',
                     timestamp: new Date().toISOString(),
-                    scoreT: result.scoreT, scoreX: result.scoreX,
-                    streak: result.streak, autoFixed: result.autoFixed || false
+                    probT: result.probT || 50, probX: result.probX || 50,
+                    strategyCount: result.strategyCount || 0
                 });
                 brainHU.lastSession = cur;
                 savePredictor(brainHU, brainHU_file);
@@ -936,8 +1121,8 @@ app.get('/_api/hu', checkAuth, async (req, res) => {
             stats: brainHU.stats,
             winRate: brainHU.getWinRate(),
             reliability: brainHU.getReliability(),
-            consecutiveLoss: brainHU.consecutiveLoss,
-            autoFixed: recent ? recent.autoFixed : false,
+            learningRate: brainHU.learningRate,
+            strategyWeights: brainHU.strategyWeights,
             history: brainHU.predictionCache.slice(0, 20)
         });
     } catch (e) {
@@ -952,7 +1137,7 @@ app.get('/_api/md5', checkAuth, async (req, res) => {
             const cur = data[0].sessionId;
             const ns = cur + 1;
             if (!brainMD5.predictionCache.some(r => r.nextSession === ns.toString())) {
-                const result = brainMD5.analyzeDeep(data);
+                const result = brainMD5.ensemblePredict(data);
                 brainMD5.predictionCache.unshift({
                     session: cur, nextSession: ns.toString(),
                     dice: data[0].d1 + '-' + data[0].d2 + '-' + data[0].d3,
@@ -960,8 +1145,8 @@ app.get('/_api/md5', checkAuth, async (req, res) => {
                     prediction: result.prediction, confidence: result.confidence,
                     detail: result.reason, status: '',
                     timestamp: new Date().toISOString(),
-                    scoreT: result.scoreT, scoreX: result.scoreX,
-                    streak: result.streak, autoFixed: result.autoFixed || false
+                    probT: result.probT || 50, probX: result.probX || 50,
+                    strategyCount: result.strategyCount || 0
                 });
                 brainMD5.lastSession = cur;
                 savePredictor(brainMD5, brainMD5_file);
@@ -977,8 +1162,8 @@ app.get('/_api/md5', checkAuth, async (req, res) => {
             stats: brainMD5.stats,
             winRate: brainMD5.getWinRate(),
             reliability: brainMD5.getReliability(),
-            consecutiveLoss: brainMD5.consecutiveLoss,
-            autoFixed: recent ? recent.autoFixed : false,
+            learningRate: brainMD5.learningRate,
+            strategyWeights: brainMD5.strategyWeights,
             history: brainMD5.predictionCache.slice(0, 20)
         });
     } catch (e) {
@@ -988,9 +1173,8 @@ app.get('/_api/md5', checkAuth, async (req, res) => {
 
 app.get('/_health', (req, res) => res.json({
     status: 'running',
-    version: '13.0 Sieu VIP Elite',
+    version: '15.0 Deep Learning',
     zalo: ZALO_DAICA,
-    daica: DAICA_NAME,
     huWinRate: brainHU.getWinRate() + '%',
     md5WinRate: brainMD5.getWinRate() + '%'
 }));
@@ -998,11 +1182,11 @@ app.get('/_health', (req, res) => res.json({
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log('╔══════════════════════════════════════════╗');
-    console.log('║   👑 ANH KHOI SIÊU VIP ELITE v13.0 👑  ║');
-    console.log('║   Zalo: ' + ZALO_DAICA + '                      ║');
-    console.log('║   Phân tích độc quyền - Chuẩn xác       ║');
-    console.log('╚══════════════════════════════════════════╝\n');
+    console.log('==========================================');
+    console.log('  ANH KHOI DEEP LEARNING v15 ONLINE');
+    console.log('  Zalo: ' + ZALO_DAICA);
+    console.log('  Tim Premium - Hoc Sau - Chinh Xac');
+    console.log('==========================================\n');
     startAuto();
 });
 
