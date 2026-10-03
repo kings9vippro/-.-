@@ -1,791 +1,769 @@
-import asyncio
-import io
-import json
-import os
-import random
-import re
-import string
-import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from aiohttp import web
-from pyrogram import Client, filters
-from pyrogram.errors import (
-    BadRequest,
-    ChatAdminRequired,
-    FloodWait,
-    PeerIdInvalid,
-    RPCError,
-    UserIsBlocked,
-)
-from pyrogram.types import (
-    BotCommand,
-    CallbackQuery,
-    ChatPermissions,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+const { Telegraf, Markup } = require("telegraf");
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
 
-if sys.platform != "win32":
-    try:
-        import uvloop
-        uvloop.install()
-    except ImportError:
-        pass
+// ==================== CẤU HÌNH THÔNG SỐ HỆ THỐNG ====================
+const BOT_TOKEN = process.env.BOT_TOKEN || "8251965879:AAFHl0iLezOJrjQLxWQHeMc1RoK8ul7-K7g";
+const PORT = parseInt(process.env.PORT || "8080", 10);
+const SUPER_ADMINS = [6094686933];
+const BOT_NAME = "亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗";
+const FREE_BOT = "@AnhKhoiWar_Bot";
+const PROTECTED = ["anhkhoi", "anh_khoi", "pham_anh_khoi", "dev_anh_khoi", "6094686933"];
 
-# ==================== THIẾT LẬP THAM SỐ HỆ THỐNG ====================
-API_ID = int(os.environ.get("API_ID", 32906102))
-API_HASH = os.environ.get("API_HASH", "9fc3add5b6bf34cc5335a85388f34a0f")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8251965879:AAFHl0iLezOJrjQLxWQHeMc1RoK8ul7-K7g")
+const DB_FILE = path.join(__dirname, "anhkhoi_db.json");
+const CORPUS_FILE = path.join(__dirname, "anhkhoi_corpus.json");
 
-SUPER_ADMINS = [6094686933]
-BOT_NAME = "亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗"
-FREE_BOT = "@AnhKhoiWar_Bot"
+// ==================== KHỞI TẠO WEB SERVER (RENDER KEEP-ALIVE) ====================
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end(`${BOT_NAME}\nTRẠNG THÁI: ONLINE 24/7 TRÊN RENDER\nTÁC GIẢ: ANH KHÔI\nKHO TỪ: ${memoryCorpus.length}`);
+});
 
-MUST_JOIN = []
-BANNED_CHATS = []
-PROTECTED = ["anhkhoi", "anh_khoi", "pham_anh_khoi", "dev_anh_khoi", "6094686933"]
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`[*] Web Server Render đã liên kết thành công Port: ${PORT}`);
+});
 
-DB_FILE = "anhkhoi_db.json"
-CORPUS_FILE = "anhkhoi_corpus.json"
+// ==================== QUẢN LÝ DỮ LIỆU & DEDUPLICATION HASH SET ====================
+const DEFAULT_CORPUS = [
+  "Dit me may, song nhu cai lon rach ma cung du war",
+  "Cai mat may nhin nhu lo dit bi dam sung",
+  "To tien may ma biet de ra thu nhu may chac tu khai tu dong ho",
+  "May chui tao a? Nhu cho sua vao tuong xi mang vay con a",
+  "Tao ma la may thi tao dap dau vao bon cau ma chet cho do nhuc",
+  "Thang oc cho nhu may di thi IQ chac bi duoi vi xuc pham chi so toi thieu",
+  "Bo may noi cau nao la may cam cau do, vi may la can ba xa hoi",
+  "Nao may nhu qua trung thoi chua no da len men",
+  "May la loi gen tram trong nhat trong lich su tao hoa",
+  "Quỳ xuống trước mặt Anh Khôi Độc Nhất Vô Nhị đi con phế vật",
+  "Đẳng cấp của Anh Khôi là thứ cả đời mày không bao giờ chạm tới được",
+  "Một đòn thanh tẩy của Anh Khôi đủ xóa sổ cả gia phả nhà mày"
+];
 
-# ==================== KHO NGÔN CƠ BẢN (KHỞI TẠO NẾU RỖNG) ====================
-DEFAULT_CORPUS = [
-    "Khaos Titan tối cao nghiền nát mọi chướng ngại cản đường",
-    "Sức mạnh vô đối của Anh Khôi áp đảo toàn bộ chiến trường",
-    "Đẳng cấp chênh lệch quá xa, đừng cố gắng trong vô vọng",
-    "Hỏa lực tối đa kích hoạt, quét sạch mọi đối thủ",
-    "Tuyệt đối phục tùng trước uy quyền tối thượng",
-    "Không một ai đủ tư cách đứng ngang hàng ở đây",
-    "Chiến trường này là sàn diễn độc quyền của Anh Khôi",
-    "Hủy diệt toàn diện, không lưu lại một dấu vết",
-]
+function initDb() {
+  return {
+    server_key: true,
+    users: {},
+    keys: {},
+    tasks: {},
+    banned: [],
+    auth: [],
+    admins: [],
+    delay: 0.0001,
+    groups: {},
+    spam_active: {}
+  };
+}
 
-# ==================== QUẢN LÝ DỮ LIỆU BẢN QUYỀN & NGÔN TỪ ====================
-def init_db_structure():
-    return {
-        "server_key": True,
-        "users": {},
-        "keys": {},
-        "tasks": {},
-        "banned": [],
-        "auth": [],
-        "admins": [],
-        "delay": 0.0001,
-        "groups": {},
-        "spam_active": {},
+function loadDb() {
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+      return Object.assign(initDb(), raw);
+    } catch (_) {}
+  }
+  return initDb();
+}
+
+const db = loadDb();
+
+function saveDb() {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf8");
+  } catch (err) {
+    console.error("[!] Lỗi ghi DB:", err);
+  }
+}
+
+function loadCorpus() {
+  const uniqueSet = new Set(DEFAULT_CORPUS.map((s) => s.trim()));
+  if (fs.existsSync(CORPUS_FILE)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(CORPUS_FILE, "utf8"));
+      if (Array.isArray(raw)) {
+        for (const item of raw) {
+          if (typeof item === "string") {
+            const cleaned = item.trim();
+            if (cleaned.length >= 3) uniqueSet.add(cleaned);
+          }
+        }
+      }
+    } catch (_) {}
+  } else {
+    saveCorpusList([...uniqueSet]);
+  }
+  return [...uniqueSet];
+}
+
+function saveCorpusList(list) {
+  try {
+    const cleanUnique = [...new Set(list.map((s) => s.trim()).filter((s) => s.length >= 3))].sort();
+    fs.writeFileSync(CORPUS_FILE, JSON.stringify(cleanUnique, null, 2), "utf8");
+  } catch (err) {
+    console.error("[!] Lỗi ghi Corpus:", err);
+  }
+}
+
+let memoryCorpus = loadCorpus();
+
+function isAdm(uid) {
+  return SUPER_ADMINS.includes(Number(uid)) || (db.admins && db.admins.includes(Number(uid)));
+}
+
+function allAdmins() {
+  return [...new Set([...SUPER_ADMINS, ...(db.admins || [])])];
+}
+
+function genKey() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let str = "AK-VIP-";
+  for (let i = 0; i < 12; i++) {
+    str += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return str;
+}
+
+// ==================== ASSETS BIỂU TƯỢNG VÀ NỘI DUNG ====================
+const SUOC_MODERN = [
+  "亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗",
+  "𓆩✧𓆪 𖤍 𝗖𝗬𝗕𝗘𝗥 𝗪𝗔𝗥𝗟𝗢𝗥𝗗 𝗔𝗡𝗛 𝗞𝗛𝗢̂𝗜 𖤍 𓆩✧𓆪",
+  "𒆜 ☬ 𝕯𝕰𝕬𝕿𝕳 𝕽𝕰𝕬𝕷𝕸 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 ☬ 𒆜",
+  "🜲 𝕭𝕷𝕬𝕮𝕶 𝕰𝕸𝖄𝕴𝕽𝕰 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 🜲",
+  "𒀱 𝕴𝕹𝕱𝕰𝕽𝕹𝕺 𝕯𝕺𝕸𝕴𝕹𝕬𝕿𝕴𝕺𝕹 𒀱",
+  "𖣘 ✦ 𝕶𝕴𝕹𝕲 𝕺𝕱 𝕯𝕰𝕾𝕿𝕽𝖀𝕮𝕿𝕴𝕺𝕹 ✦ 𖣘",
+  "⚡ 𓊈 𝖁𝕺̂ Đ𝕴̣𝕮𝕳 𝕿𝕳𝕴𝕰̂𝕹 𝕳𝕬̣ 𓊉 ⚡",
+  "𖤍 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕿𝕺̂́𝕴 𝕮𝕬𝕺 𖤍"
+];
+
+const ICONS_MODERN = [
+  "亗 𖤍 🜲", "𓆩✧𓆪 ☬ 𒆜", "𒀱 ⚡ 𖣘",
+  "✦ ᯓ ⚜", "𓊈☠︎𓊉 ☣ 𖤐", "𖤍 𓊈AK𓊉 亗", "🜲 ✦ 𒀱"
+];
+
+function lol(n) {
+  const len = n || Math.floor(Math.random() * 10) + 3;
+  return "=" + ")".repeat(len);
+}
+
+function getRandomItem(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getWarInsult() {
+  const base = memoryCorpus.length > 0 ? getRandomItem(memoryCorpus) : "Sức mạnh vô đối của Anh Khôi";
+  return `${base}${lol()}`;
+}
+
+function buildWarBanner(mention = "") {
+  const art = getRandomItem(SUOC_MODERN);
+  const m = mention ? `${mention}\n` : "";
+  return `${art}\n\n${m}⚡ 亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗 ⚡`;
+}
+
+function buildInsultDelivery(mention = "") {
+  const ins = getWarInsult();
+  const m = mention ? `${mention} ` : "";
+  return `𖤍 ${m}${ins}`;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ==================== BỘ KIỂM SOÁT BẢN QUYỀN ====================
+function checkAuth(ctx) {
+  const uid = ctx.from ? ctx.from.id : 0;
+  if (db.banned.includes(uid)) return "banned";
+  if (isAdm(uid)) return "ok";
+  if (db.auth.includes(uid)) return "ok";
+
+  if (db.server_key) {
+    const exp = db.users[uid];
+    if (!exp) return "key";
+    if (new Date(exp).getTime() < Date.now()) return "key";
+  }
+  return "ok";
+}
+
+async function replyDeny(ctx, reason) {
+  if (reason === "key") {
+    return ctx.reply(`🔑 Cần Mã Kích Hoạt Của Anh Khôi! Cú pháp: \`/nhapma <MÃ>\`\n👑 Bot: ${FREE_BOT}`);
+  }
+  if (reason === "banned") {
+    return ctx.reply("🚫 Ngươi đã bị Anh Khôi phong sát toàn diện!");
+  }
+}
+
+function resolveTarget(ctx) {
+  let target = null;
+  let mention = null;
+  const msg = ctx.message;
+
+  if (msg.reply_to_message && msg.reply_to_message.from) {
+    const u = msg.reply_to_message.from;
+    target = u.id;
+    mention = u.username ? `@${u.username}` : `[${u.first_name || u.id}](tg://user?id=${u.id})`;
+  } else {
+    const parts = (msg.text || "").trim().split(/\s+/);
+    if (parts.length > 1) {
+      const raw = parts[1];
+      target = raw;
+      mention = raw;
+      if (!raw.startsWith("@")) {
+        const num = parseInt(raw, 10);
+        if (!isNaN(num)) {
+          target = num;
+          mention = `\`${num}\``;
+        }
+      }
+    }
+  }
+
+  if (target || mention) {
+    const rawCheck = `${target}${mention}`.toLowerCase();
+    for (const p of PROTECTED) {
+      if (rawCheck.includes(p.toLowerCase())) {
+        return { target: null, mention: null };
+      }
+    }
+  }
+  return { target, mention };
+}
+
+// ==================== KHỞI TẠO TELEGRAF CLIENT ====================
+const bot = new Telegraf(BOT_TOKEN);
+
+// ==================== PIPELINE HỎA LỰC SIÊU TỐC ====================
+async function turboWorker(chatId, target, mention, mode, content, tid, stats) {
+  while (db.tasks[tid]) {
+    try {
+      const delay = Math.max(parseFloat(db.delay || 0.0001), 0.00001);
+
+      if (mode === "tancoc") {
+        await bot.telegram.sendMessage(chatId, buildWarBanner(mention));
+      } else if (mode === "tamxa") {
+        await bot.telegram.sendMessage(target, buildWarBanner(mention));
+      } else if (mode === "phatngon") {
+        await bot.telegram.sendMessage(chatId, `${mention}\n${content}`);
+      } else if (mode === "diemdanh") {
+        await bot.telegram.sendMessage(chatId, `⚡ ${BOT_NAME} | ${mention}\n亗 Đòn #${stats.count + 1}`);
+      } else if (mode === "baobi") {
+        await bot.telegram.sendMessage(chatId, `${getRandomItem(ICONS_MODERN)} ${mention}${getRandomItem(ICONS_MODERN)}`);
+      } else if (mode === "satngon") {
+        await bot.telegram.sendMessage(chatId, buildInsultDelivery(mention));
+      }
+
+      stats.count++;
+      stats.err = 0;
+      await sleep(delay > 0.001 ? delay * 1000 : 1);
+    } catch (err) {
+      if (err.response && err.response.error_code === 429) {
+        const wait = Math.max((err.response.parameters && err.response.parameters.retry_after) || 3, 3);
+        try {
+          await bot.telegram.sendMessage(chatId, `⏳ Rate-limit ${wait}s \vert{} Đã hạ gục ${stats.count} đòn`);
+        } catch (_) {}
+        await sleep(wait * 1000);
+      } else if (err.response && (err.response.error_code === 403 || (err.message && err.message.includes("blocked")))) {
+        try {
+          await bot.telegram.sendMessage(chatId, "🚨 MỤC TIÊU ĐÃ CHẶN BOT CỦA ANH KHÔI!");
+        } catch (_) {}
+        db.tasks[tid] = false;
+        db.spam_active[tid] = false;
+        saveDb();
+        break;
+      } else {
+        stats.err++;
+        if (stats.err >= 6) {
+          db.tasks[tid] = false;
+          db.spam_active[tid] = false;
+          saveDb();
+          break;
+        }
+        await sleep(1000);
+      }
+    }
+  }
+}
+
+async function supremeEngine(chatId, userId, target, mention, mode = "tancoc", content = null, workersCount = 1) {
+  const tid = `${chatId}_${userId}`;
+  db.tasks[tid] = true;
+  db.spam_active[tid] = true;
+  saveDb();
+
+  const stats = { count: 0, err: 0 };
+  const delay = db.delay || 0.0001;
+
+  try {
+    await bot.telegram.sendMessage(
+      chatId,
+      `🚀 **${BOT_NAME} – XUNG TRẬN!**\n` +
+      `🎯 Mục tiêu: ${mention || target}\n` +
+      `⚡ Chế độ: ${mode.toUpperCase()} | Vận tốc: ${delay}s \vert{} Luồng: x${workersCount}\n` +
+      `👑 Thống soái: Anh Khôi`
+    );
+  } catch (_) {}
+
+  for (let i = 0; i < workersCount; i++) {
+    turboWorker(chatId, target, mention, mode, content, tid, stats);
+  }
+
+  const RUN_TIME = 300 * 1000;
+  const REST_TIME = 25 * 1000;
+
+  while (db.tasks[tid]) {
+    await sleep(RUN_TIME);
+    if (!db.tasks[tid]) break;
+
+    try {
+      await bot.telegram.sendMessage(chatId, `💤 Tạm nghỉ ${REST_TIME / 1000}s tránh kiểm duyệt | Đã xả: **${stats.count}** đòn`);
+    } catch (_) {}
+
+    await sleep(REST_TIME);
+    try {
+      await bot.telegram.sendMessage(chatId, "🔥 ANH KHÔI TIẾP TỤC TRỪNG PHẠT BÃO LỬA!");
+    } catch (_) {}
+  }
+
+  db.tasks[tid] = false;
+  db.spam_active[tid] = false;
+  saveDb();
+
+  try {
+    await bot.telegram.sendMessage(chatId, `🏁 **KẾT THÚC CÀN QUÉT** | Tổng cộng: **${stats.count}** đòn kết liễu!`);
+  } catch (_) {}
+}
+
+// ==================== ĐIỀU PHỐI LỆNH TẤN CÔNG ====================
+bot.command("tancoc", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const { target, mention } = resolveTarget(ctx);
+  if (!target) return ctx.reply("❌ Cú pháp: `/tancoc @user` hoặc reply tin nhắn mục tiêu");
+  supremeEngine(ctx.chat.id, ctx.from.id, target, mention, "tancoc", null, 1);
+});
+
+bot.command("cuongbao", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const { target, mention } = resolveTarget(ctx);
+  if (!target) return ctx.reply("❌ Cú pháp: `/cuongbao @user` (Chế độ cuồng bạo x3 luồng)");
+  supremeEngine(ctx.chat.id, ctx.from.id, target, mention, "tancoc", null, 3);
+});
+
+bot.command("tamxa", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const { target, mention } = resolveTarget(ctx);
+  if (!target) return ctx.reply("❌ Cú pháp: `/tamxa @user` hoặc reply tin nhắn");
+  supremeEngine(ctx.chat.id, ctx.from.id, target, mention, "tamxa", null, 1);
+});
+
+bot.command("phatngon", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const p = ctx.message.text.split(/\s+/);
+  if (p.length < 2) return ctx.reply("❌ Cú pháp: `/phatngon <nội dung>`");
+  const content = ctx.message.text.substring(p[0].length).trim();
+  const mention = ctx.message.reply_to_message && ctx.message.reply_to_message.from ? `@${ctx.message.reply_to_message.from.username || ""}` : "";
+  supremeEngine(ctx.chat.id, ctx.from.id, ctx.chat.id, mention, "phatngon", content, 1);
+});
+
+bot.command("diemdanh", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const mention = ctx.message.reply_to_message && ctx.message.reply_to_message.from ? `@${ctx.message.reply_to_message.from.username || ""}` : "";
+  supremeEngine(ctx.chat.id, ctx.from.id, ctx.chat.id, mention, "diemdanh", null, 1);
+});
+
+bot.command("baobi", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const mention = ctx.message.reply_to_message && ctx.message.reply_to_message.from ? `@${ctx.message.reply_to_message.from.username || ""}` : "";
+  supremeEngine(ctx.chat.id, ctx.from.id, ctx.chat.id, mention, "baobi", null, 1);
+});
+
+bot.command("satngon", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  let { target, mention } = resolveTarget(ctx);
+  if (!target) {
+    target = ctx.chat.id;
+    mention = "";
+  }
+  supremeEngine(ctx.chat.id, ctx.from.id, target, mention, "satngon", null, 2);
+});
+
+bot.command("dinhchi", async (ctx) => {
+  const tid = `${ctx.chat.id}_${ctx.from.id}`;
+  if (isAdm(ctx.from.id)) {
+    let stopped = 0;
+    for (const key of Object.keys(db.tasks)) {
+      if (key.startsWith(`${ctx.chat.id}_`) && db.tasks[key]) {
+        db.tasks[key] = false;
+        stopped++;
+      }
+    }
+    saveDb();
+    return ctx.reply(`🛑 Anh Khôi đã đình chỉ toàn bộ **${stopped}** chiến dịch trong nhóm!`);
+  }
+  if (db.tasks[tid]) {
+    db.tasks[tid] = false;
+    db.spam_active[tid] = false;
+    saveDb();
+    ctx.reply("🛑 Đã dừng chiến dịch của bạn thành công!");
+  } else {
+    ctx.reply("⚠️ Không có chiến dịch nào đang chạy.");
+  }
+});
+
+bot.command("tocdo", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const p = ctx.message.text.trim().split(/\s+/);
+  if (p.length === 1) {
+    return ctx.reply(
+      `⚡ **TỐC ĐỘ HỎA LỰC:** \`${db.delay || 0.0001}s/đòn\`\nChọn bên dưới hoặc gõ: \`/tocdo 0.0001\``,
+      Markup.inlineKeyboard([
+        [Markup.button.callback("⚡ Turbo (0.0001s)", "spd_0.0001"), Markup.button.callback("⚡ Nhanh (0.1s)", "spd_0.1")],
+        [Markup.button.callback("✦ Vừa (0.5s)", "spd_0.5"), Markup.button.callback("🐢 Chậm (1s)", "spd_1.0")]
+      ])
+    );
+  }
+  const v = Math.max(parseFloat(p[1]) || 0.0001, 0.00001);
+  db.delay = v;
+  saveDb();
+  ctx.reply(`✅ Đã thiết lập vận tốc hỏa lực: **${v}s/đòn**`);
+});
+
+bot.action(/^spd_([\d\.]+)$/, async (ctx) => {
+  const v = parseFloat(ctx.match[1]);
+  db.delay = v;
+  saveDb();
+  await ctx.answerCbQuery(`Tốc độ: ${v}s`);
+  ctx.editMessageText(`✅ Thiết lập tốc độ thành công: **${v}s/đòn**`);
+});
+
+// ==================== NẠP FILE TXT & DEDUPLICATION TUYỆT ĐỐI ====================
+bot.command("themngon", async (ctx) => {
+  if (!isAdm(ctx.from.id)) return ctx.reply("❌ Chỉ Thống Soái mới có quyền nạp ngôn!");
+  const parts = ctx.message.text.split(/\s+/);
+  if (parts.length < 2) return ctx.reply("💡 Cú pháp: `/themngon Câu 1 | Câu 2 | Câu 3`");
+
+  const rawEntries = ctx.message.text.substring(parts[0].length).trim().split("|");
+  const currentSet = new Set(memoryCorpus);
+  let added = 0;
+
+  for (const item of rawEntries) {
+    const cleaned = item.replace(/^\d+[\.\)\]]\s*/, "").trim();
+    if (cleaned.length >= 3 && !currentSet.has(cleaned)) {
+      currentSet.add(cleaned);
+      added++;
+    }
+  }
+
+  memoryCorpus = [...currentSet].sort();
+  saveCorpusList(memoryCorpus);
+  ctx.reply(`✅ **ĐÃ NẠP THÀNH CÔNG:**\n➕ Thêm mới (không trùng): \`${added}\` câu\n📚 Tổng kho hiện tại: \`${memoryCorpus.length}\` câu`);
+});
+
+bot.command("napfile", async (ctx) => {
+  if (!isAdm(ctx.from.id)) return ctx.reply("❌ Chỉ Thống Soái mới có quyền nạp file!");
+  await handleTxtIngestion(ctx);
+});
+
+bot.on("document", async (ctx) => {
+  const caption = ctx.message.caption || "";
+  if (caption.includes("/napfile") || caption.includes("napfile")) {
+    if (!isAdm(ctx.from.id)) return;
+    await handleTxtIngestion(ctx);
+  }
+});
+
+async function handleTxtIngestion(ctx) {
+  let doc = ctx.message.document;
+  if (!doc && ctx.message.reply_to_message && ctx.message.reply_to_message.document) {
+    doc = ctx.message.reply_to_message.document;
+  }
+
+  if (!doc || !doc.file_name.toLowerCase().endsWith(".txt")) {
+    return ctx.reply("💡 Gửi file `.txt` kèm caption `/napfile` hoặc reply file `.txt` bằng lệnh `/napfile`.");
+  }
+
+  const statusMsg = await ctx.reply("⏳ Đang tải tệp và thực thi Hash Deduplication...");
+
+  try {
+    const link = await ctx.telegram.getFileLink(doc.file_id);
+    const response = await fetch(link.href);
+    const text = await response.text();
+
+    const lines = text.split(/\r?\n/);
+    const currentSet = new Set(memoryCorpus);
+    const initialCount = currentSet.size;
+
+    for (const line of lines) {
+      const cleaned = line.replace(/^\d+[\.\)\]]\s*/, "").trim();
+      if (cleaned.length >= 3) {
+        currentSet.add(cleaned);
+      }
     }
 
-def load_db():
-    if Path(DB_FILE).exists():
-        try:
-            raw = json.loads(Path(DB_FILE).read_text(encoding="utf-8"))
-            base = init_db_structure()
-            base.update(raw)
-            base["users"] = {int(k): v for k, v in base["users"].items()}
-            base["banned"] = [int(x) for x in base["banned"]]
-            base["auth"] = [int(x) for x in base["auth"]]
-            base["admins"] = [int(x) for x in base["admins"]]
-            return base
-        except Exception:
-            pass
-    return init_db_structure()
+    const added = currentSet.size - initialCount;
+    memoryCorpus = [...currentSet].sort();
+    saveCorpusList(memoryCorpus);
 
-def save_db():
-    out = dict(db)
-    out["users"] = {str(k): v for k, v in db["users"].items()}
-    Path(DB_FILE).write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    await ctx.telegram.editMessageText(
+      ctx.chat.id,
+      statusMsg.message_id,
+      undefined,
+      `✅ **XỬ LÝ FILE TXT HOÀN TẤT!**\n` +
+      `📄 Tên file: \`${doc.file_name}\`\n` +
+      `📥 Tổng dòng quét: \`${lines.length}\`\n` +
+      `✨ Thêm mới (loại trùng tuyệt đối): \`${added}\` câu\n` +
+      `📊 Tổng kho từ vựng hiện tại: \`${memoryCorpus.length}\` câu`
+    );
+  } catch (err) {
+    await ctx.telegram.editMessageText(ctx.chat.id, statusMsg.message_id, undefined, `❌ Thất bại: ${err.message}`);
+  }
+}
 
-db = load_db()
+bot.command("kho", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
 
-def load_corpus():
-    data = set(DEFAULT_CORPUS)
-    if Path(CORPUS_FILE).exists():
-        try:
-            loaded = json.loads(Path(CORPUS_FILE).read_text(encoding="utf-8"))
-            if isinstance(loaded, list):
-                for item in loaded:
-                    cleaned = item.strip()
-                    if cleaned:
-                        data.add(cleaned)
-        except Exception:
-            pass
-    else:
-        save_corpus_list(list(data))
-    return list(data)
+  const total = memoryCorpus.length;
+  const sample = memoryCorpus.slice(0, 5).map((x) => `• ${x}`).join("\n");
+  ctx.reply(
+    `📊 **KHO VŨ KHÍ TỪ VỰNG ANH KHÔI**\n` +
+    `Tổng số câu độc nhất: \`${total}\`\n\n` +
+    `🔍 **Mẫu trích xuất:**\n${sample || "Chưa có dữ liệu"}\n\n` +
+    `💡 Thêm mới: \`/themngon\` hoặc gửi file \`.txt\` kèm \`/napfile\``
+  );
+});
 
-def save_corpus_list(items):
-    clean_unique = sorted(list({x.strip() for x in items if x.strip()}))
-    Path(CORPUS_FILE).write_text(json.dumps(clean_unique, ensure_ascii=False, indent=2), encoding="utf-8")
+bot.command("xoangon", async (ctx) => {
+  if (!isAdm(ctx.from.id)) return ctx.reply("❌ Quyền hạn bị từ chối!");
+  const p = ctx.message.text.trim().split(/\s+/);
+  if (p.length < 2) return ctx.reply("💡 Cú pháp: `/xoangon <từ_khóa>`");
 
-memory_corpus = load_corpus()
+  const kw = p.slice(1).join(" ").toLowerCase();
+  const before = memoryCorpus.length;
+  memoryCorpus = memoryCorpus.filter((x) => !x.toLowerCase().includes(kw));
+  const removed = before - memoryCorpus.length;
+  saveCorpusList(memoryCorpus);
 
-def all_adm():
-    return list(set(SUPER_ADMINS + [x for x in db.get("admins", [])]))
+  ctx.reply(`🗑 Đã xóa sạch \`${removed}\` câu chứa từ khóa \`${kw}\`. Còn lại: \`${memoryCorpus.length}\` câu.`);
+});
 
-def is_adm(uid):
-    return uid in SUPER_ADMINS or uid in db.get("admins", [])
+// ==================== QUẢN LÝ NHÓM & BẢN QUYỀN ====================
+bot.command(["dondep", "quetgon"], async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const p = ctx.message.text.trim().split(/\s+/);
+  let count = parseInt(p[1], 10) || 20;
+  count = Math.min(Math.max(count, 1), 100);
 
-# ==================== RENDER WEB SERVER PORT BINDING ====================
-async def web_health(request):
-    return web.Response(
-        text=f"{BOT_NAME}\nSTATUS: RUNNING 24/7 ON RENDER\nCORPUS ITEMS: {len(memory_corpus)}\nAUTHOR: ANH KHOI",
-        status=200,
-        content_type="text/plain; charset=utf-8",
-    )
+  const startId = ctx.message.message_id;
+  let deleted = 0;
 
-async def start_render_web_server():
-    port = int(os.environ.get("PORT", 8080))
-    app_web = web.Application()
-    app_web.router.add_get("/", web_health)
-    app_web.router.add_get("/health", web_health)
-    runner = web.AppRunner(app_web)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    print(f"[*] Render Web Server bound to port: {port}")
+  for (let i = 0; i <= count; i++) {
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, startId - i);
+      deleted++;
+    } catch (_) {}
+  }
 
-# ==================== TEXT GENERATOR & CYBER ASSETS ====================
-SUOC_MODERN = [
-    "亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗",
-    "𓆩✧𓆪 𖤍 𝗖𝗬𝗕𝗘𝗥 𝗪𝗔𝗥𝗟𝗢𝗥𝗗 𝗔𝗡𝗛 𝗞𝗛𝗢̂𝗜 𖤍 𓆩✧𓆪",
-    "𒆜 ☬ 𝕯𝕰𝕬𝕿𝕳 𝕽𝕰𝕬𝕷𝕸 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 ☬ 𒆜",
-    "🜲 𝕭𝕷𝕬𝕮𝕶 𝕰𝕸𝖄𝕴𝕽𝕰 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 🜲",
-    "𒀱 𝕴𝕹𝕱𝕰𝕽𝕹𝕺 𝕯𝕺𝕸𝕴𝕹𝕬𝕿𝕴𝕺𝕹 𒀱",
-]
+  const n = await ctx.reply(`🧹 Anh Khôi đã thanh trừng sạch sẽ **${deleted}** tin nhắn!`);
+  setTimeout(() => {
+    ctx.telegram.deleteMessage(ctx.chat.id, n.message_id).catch(() => {});
+  }, 3000);
+});
 
-ICONS_MODERN = [
-    "亗 𖤍 🜲", "𓆩✧𓆪 ☬ 𒆜", "𒀱 ⚡ 𖣘",
-    "✦ ᯓ ⚜", "𓊈☠︎𓊉 ☣ 𖤐", "𖤍 𓊈AK𓊉 亗"
-]
+bot.command("camkhau", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const { target } = resolveTarget(ctx);
+  if (!target || isAdm(target)) return ctx.reply("💡 Cú pháp: `/camkhau @user [phút]`");
 
-def lol(n=None):
-    if n is None:
-        n = random.randint(3, 12)
-    return "=" + (")" * n)
+  const p = ctx.message.text.trim().split(/\s+/);
+  const mins = parseInt(p[2], 10) || 0;
+  const until = mins > 0 ? Math.floor(Date.now() / 1000) + mins * 60 : 0;
 
-def get_payload_insult():
-    global memory_corpus
-    if not memory_corpus:
-        return f"Sức mạnh vô địch của Anh Khôi {lol()}"
-    return f"{random.choice(memory_corpus)} {lol()}"
+  try {
+    await ctx.telegram.restrictChatMember(ctx.chat.id, Number(target), {
+      permissions: { can_send_messages: false },
+      until_date: until
+    });
+    ctx.reply(`🔇 Đã cấm khẩu thành công (${mins ? `${mins} phút` : "Vĩnh viễn"})!`);
+  } catch (err) {
+    ctx.reply(`❌ Lỗi quyền hạn: ${err.message}`);
+  }
+});
 
-def build_war_banner(mention=""):
-    art = random.choice(SUOC_MODERN)
-    m = f"{mention}\n" if mention else ""
-    return f"{art}\n\n{m}⚡ 亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗 ⚡"
+bot.command("khaitro", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const { target } = resolveTarget(ctx);
+  if (!target) return ctx.reply("💡 Cú pháp: `/khaitro @user`");
 
-def build_insult_delivery(mention=""):
-    ins = get_payload_insult()
-    m = f"{mention} " if mention else ""
-    return f"𖤍 {m}{ins}"
+  try {
+    await ctx.telegram.restrictChatMember(ctx.chat.id, Number(target), {
+      permissions: {
+        can_send_messages: true,
+        can_send_media_messages: true,
+        can_send_other_messages: true,
+        can_add_web_page_previews: true
+      }
+    });
+    ctx.reply("🔊 Đã khai khẩu cho đối tượng!");
+  } catch (err) {
+    ctx.reply(`❌ Lỗi: ${err.message}`);
+  }
+});
 
-# ==================== KHỞI TẠO CLIENT TELEGRAM ====================
-app = Client(
-    "AnhKhoi_War_Supreme",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN
-)
+bot.command("trutxuat", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const { target } = resolveTarget(ctx);
+  if (!target || isAdm(target)) return;
+  try {
+    await ctx.telegram.banChatMember(ctx.chat.id, Number(target));
+    await ctx.telegram.unbanChatMember(ctx.chat.id, Number(target));
+    ctx.reply("👢 Đã trục xuất kẻ bại trận khỏi địa bàn!");
+  } catch (err) {
+    ctx.reply(`❌ Lỗi: ${err.message}`);
+  }
+});
 
-def gen_key():
-    return "AK-VIP-" + "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
+bot.command("phongsat", async (ctx) => {
+  const auth = checkAuth(ctx);
+  if (auth !== "ok") return replyDeny(ctx, auth);
+  const { target } = resolveTarget(ctx);
+  if (!target || isAdm(target)) return;
+  try {
+    await ctx.telegram.banChatMember(ctx.chat.id, Number(target));
+    ctx.reply("🚫 Đã phong sát vĩnh viễn mục tiêu!");
+  } catch (err) {
+    ctx.reply(`❌ Lỗi: ${err.message}`);
+  }
+});
 
-async def chk(msg: Message):
-    uid = msg.from_user.id if msg.from_user else 0
-    if uid in db.get("banned", []):
-        return "banned"
-    if is_adm(uid):
-        return "ok"
-    cid = str(msg.chat.id)
-    if cid in db.get("banned_chats", []):
-        return "pc"
-    if getattr(msg.chat, "username", "") in BANNED_CHATS:
-        return "pc"
-    if uid in db.get("auth", []):
-        return "ok"
-    for g in MUST_JOIN:
-        try:
-            await app.get_chat_member(g, uid)
-        except Exception:
-            return "join"
-    if db.get("server_key", True):
-        exp = db.get("users", {}).get(uid)
-        if not exp:
-            return "key"
-        try:
-            if datetime.fromisoformat(str(exp)) < datetime.now():
-                return "key"
-        except Exception:
-            return "key"
-    return "ok"
+bot.command("capma", async (ctx) => {
+  if (!isAdm(ctx.from.id)) return;
+  const p = ctx.message.text.trim().split(/\s+/);
+  if (p.length < 3) return ctx.reply("💡 Cú pháp: `/capma <ngày> <số_máy> [ghi chú]`");
 
-async def deny(msg: Message, r: str):
-    if r == "join":
-        gs = "\n".join(f"• t.me/{g}" for g in MUST_JOIN)
-        await msg.reply(f"❌ Cần tham gia kênh chỉ định:\n{gs}\n\n👑 Bot: {FREE_BOT}")
-    elif r == "key":
-        await msg.reply(f"🔑 Cần Mã Kích Hoạt! Cú pháp: `/nhapma <MÃ>`\n👑 Bot: {FREE_BOT}")
-    elif r == "banned":
-        await msg.reply("🚫 Bạn đã bị chặn quyền truy cập hệ thống!")
+  const days = parseInt(p[1], 10);
+  const devs = parseInt(p[2], 10);
+  const note = p.slice(3).join(" ") || "-";
+  const k = genKey();
 
-async def resolve(msg: Message):
-    tgt = None
-    mention = None
-    if msg.reply_to_message and msg.reply_to_message.from_user:
-        u = msg.reply_to_message.from_user
-        tgt = u.id
-        mention = u.mention
-    else:
-        p = msg.text.split()
-        if len(p) > 1:
-            raw = p[1]
-            tgt = raw
-            mention = raw
-            if not raw.startswith("@"):
-                try:
-                    tgt = int(raw)
-                    mention = f"`{raw}`"
-                except ValueError:
-                    pass
-    for n in PROTECTED:
-        if n in str(mention).lower() or n in str(tgt).lower():
-            return None, None
-    return tgt, mention
+  db.keys[k] = {
+    days,
+    devs,
+    users: [],
+    note,
+    created: new Date().toISOString(),
+    by: ctx.from.id
+  };
+  saveDb();
+  ctx.reply(`🔑 **MÃ ĐÃ TẠO BỞI ANH KHÔI!**\n\`${k}\`\n📅 ${days} ngày | 💻 ${devs} máy \vert{} 📝 ${note}`);
+});
 
-def speed_kb():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("⚡ Turbo (0.0001s)", callback_data="akspd_0.0001"),
-            InlineKeyboardButton("⚡ Nhanh (0.1s)", callback_data="akspd_0.1"),
-        ],
-        [
-            InlineKeyboardButton("✦ Vừa (0.5s)", callback_data="akspd_0.5"),
-            InlineKeyboardButton("🐢 Chuẩn (1s)", callback_data="akspd_1.0"),
-        ]
-    ])
+bot.command("nhapma", async (ctx) => {
+  const p = ctx.message.text.trim().split(/\s+/);
+  const uid = ctx.from.id;
+  if (p.length < 2) return ctx.reply("💡 Cú pháp: `/nhapma <KEY>`");
 
-# ==================== ENGINE PHUN LỆNH SONG SONG ====================
-async def turbo_worker(chat_id, target, mention, mode, content, tid, stats):
-    delay = max(float(db.get("delay", 0.0001)), 0.00001)
-    while db.get("tasks", {}).get(tid):
-        try:
-            if mode == "tancoc":
-                await app.send_message(chat_id, build_war_banner(mention))
-            elif mode == "tamxa":
-                await app.send_message(target, build_war_banner(mention))
-            elif mode == "phatngon":
-                await app.send_message(chat_id, f"{mention}\n{content}")
-            elif mode == "diemdanh":
-                await app.send_message(chat_id, f"⚡ **{BOT_NAME}** | {mention}\n`亗 Đòn #{stats['count']+1}`")
-            elif mode == "baobi":
-                await app.send_message(chat_id, f"{random.choice(ICONS_MODERN)} {mention} {random.choice(ICONS_MODERN)}")
-            elif mode == "satngon":
-                await app.send_message(chat_id, build_insult_delivery(mention))
+  const k = p[1];
+  if (!db.keys[k]) return ctx.reply("❌ Mã không hợp lệ!");
+  const kd = db.keys[k];
 
-            stats["count"] += 1
-            stats["err"] = 0
-            await asyncio.sleep(delay if delay > 0.001 else 0.0001)
-        except FloodWait as e:
-            w = max(e.value, 3)
-            try:
-                await app.send_message(chat_id, f"⏳ Rate-limit {w}s | Tổng đã xuất: {stats['count']} đòn")
-            except Exception:
-                pass
-            await asyncio.sleep(w)
-        except UserIsBlocked:
-            db["tasks"][tid] = False
-            db["spam_active"][tid] = False
-            save_db()
-            break
-        except (PeerIdInvalid, BadRequest):
-            stats["err"] += 1
-            if stats["err"] >= 5:
-                db["tasks"][tid] = False
-                db["spam_active"][tid] = False
-                save_db()
-                break
-            await asyncio.sleep(1)
-        except RPCError:
-            stats["err"] += 1
-            await asyncio.sleep(1.5)
+  if (kd.users.includes(uid)) return ctx.reply("ℹ️ Ngươi đã kích hoạt mã này trước đó!");
+  if (kd.users.length >= kd.devs) return ctx.reply("❌ Mã đã hết lượt sử dụng!");
 
-async def supreme_engine(chat_id, user_id, target, mention, mode="tancoc", content=None, workers_count=1):
-    tid = f"{chat_id}_{user_id}"
-    db["tasks"][tid] = True
-    db["spam_active"][tid] = True
-    save_db()
+  const exp = new Date(Date.now() + kd.days * 24 * 60 * 60 * 1000);
+  db.users[uid] = exp.toISOString();
+  kd.users.push(uid);
+  saveDb();
+  ctx.reply(`✅ **KÍCH HOẠT THÀNH CÔNG!**\n📅 Thời hạn: ${exp.toLocaleString("vi-VN")}`);
+});
 
-    stats = {"count": 0, "err": 0}
-    delay = db.get("delay", 0.0001)
+bot.command("kiemtrama", async (ctx) => {
+  const uid = ctx.from.id;
+  if (isAdm(uid)) return ctx.reply("👑 Anh Khôi Tối Cao – Quyền năng vĩnh cửu!");
+  const exp = db.users[uid];
+  if (!exp) return ctx.reply("❌ Ngươi chưa sở hữu mã bản quyền!");
 
-    try:
-        await app.send_message(
-            chat_id,
-            f"🚀 **{BOT_NAME} – XUNG TRẬN!**\n"
-            f"🎯 Mục tiêu: {mention or target}\n"
-            f"⚡ Chế độ: {mode.upper()} | Trễ: {delay}s | Luồng: x{workers_count}\n"
-            f"👑 Thống soái: Anh Khôi"
-        )
-    except Exception:
-        pass
+  const rem = new Date(exp).getTime() - Date.now();
+  if (rem < 0) return ctx.reply("⏰ Mã đã hết hạn!");
+  const days = Math.floor(rem / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((rem % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  ctx.reply(`✅ **BẢN QUYỀN HỢP LỆ**\n📅 Hạn dùng: ${new Date(exp).toLocaleString("vi-VN")}\n⏳ Còn: ${days} ngày ${hours} giờ`);
+});
 
-    tasks = [
-        asyncio.create_task(turbo_worker(chat_id, target, mention, mode, content, tid, stats))
-        for _ in range(workers_count)
-    ]
+bot.command(["lenh", "help", "start"], async (ctx) => {
+  const uid = ctx.from ? ctx.from.id : 0;
+  let text =
+    `⚡ **${BOT_NAME}** ⚡\n` +
+    `👑 Tác giả độc quyền: **Anh Khôi**\n` +
+    `🌐 Trạng thái: **Chạy Render Node.js 24/7**\n` +
+    `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `**⚔️ HỎA LỰC TẤN CÔNG:**\n` +
+    `\`/tancoc @user\` — Bão hỏa lực nhóm\n` +
+    `\`/cuongbao @user\` — Cuồng nộ x3 luồng cực hạn\n` +
+    `\`/tamxa @user\` — Bắn phá DM riêng\n` +
+    `\`/phatngon <text>\` — Xả văn bản chỉ định\n` +
+    `\`/diemdanh\` — Bão số đếm\n` +
+    `\`/baobi\` — Mưa icon Cyber/Gothic\n` +
+    `\`/satngon @user\` — Xả ngôn từ sát thương cao\n` +
+    `\`/dinhchi\` — Dừng toàn bộ hỏa lực\n` +
+    `\`/tocdo\` — Chỉnh mili-giây\n\n` +
+    `**📚 QUẢN LÝ KHO NGÔN:**\n` +
+    `\`/kho\` — Thống kê kho từ vựng\n` +
+    `\`/themngon <câu 1 | câu 2>\` — Thêm thủ công\n` +
+    `\`/napfile\` — Reply hoặc gửi file .txt (Tự khử trùng lặp)\n` +
+    `\`/xoangon <từ khóa>\` — Lọc xóa câu từ kho\n\n` +
+    `**🏠 QUẢN TRỊ & BẢN QUYỀN:**\n` +
+    `\`/dondep <số>\` — Dọn sạch tin nhắn\n` +
+    `\`/camkhau @user [phút]\` — Cấm khẩu\n` +
+    `\`/khaitro @user\` — Mở cấm khẩu\n` +
+    `\`/trutxuat @user\` — Đuổi thành viên\n` +
+    `\`/phongsat @user\` — Ban vĩnh viễn\n` +
+    `\`/nhapma <MÃ>\` — Kích hoạt quyền\n` +
+    `\`/kiemtrama\` — Xem hạn dùng`;
 
-    RUN_TIME = 300
-    REST_TIME = 25
+  if (isAdm(uid)) {
+    text += `\n\n**👑 QUẢN TRỊ VIÊN:** \`/capma\``;
+  }
+  ctx.reply(text);
+});
 
-    while db.get("tasks", {}).get(tid):
-        await asyncio.sleep(RUN_TIME)
-        if not db.get("tasks", {}).get(tid):
-            break
-        try:
-            await app.send_message(chat_id, f"💤 Tạm dừng nghỉ {REST_TIME}s giảm tải | Đã xuất: **{stats['count']}** đòn.")
-        except Exception:
-            pass
-        await asyncio.sleep(REST_TIME)
+// ==================== KHỞI ĐỘNG HỆ THỐNG ====================
+async function bootstrap() {
+  try {
+    await bot.telegram.setMyCommands([
+      { command: "lenh", description: "Danh sách lệnh" },
+      { command: "tancoc", description: "Bão hỏa lực nhóm" },
+      { command: "cuongbao", description: "Cuồng nộ x3 luồng" },
+      { command: "tamxa", description: "Bắn phá tin nhắn riêng" },
+      { command: "phatngon", description: "Xả văn bản chỉ định" },
+      { command: "diemdanh", description: "Bão số đếm" },
+      { command: "baobi", description: "Mưa icon Cyber" },
+      { command: "satngon", description: "Xả kho ngôn từ" },
+      { command: "kho", description: "Thống kê kho ngôn" },
+      { command: "dinhchi", description: "Dừng tấn công" },
+      { command: "tocdo", description: "Thiết lập vận tốc" },
+      { command: "dondep", description: "Thanh trừng tin nhắn" },
+      { command: "nhapma", description: "Nhập mã bản quyền" },
+      { command: "kiemtrama", description: "Kiểm tra thời hạn" }
+    ]);
+  } catch (_) {}
 
-    db["tasks"][tid] = False
-    db["spam_active"][tid] = False
-    save_db()
+  bot.launch({ dropPendingUpdates: true }).then(() => {
+    console.log("[*] Telegram Bot Anh Khôi đã sẵn sàng tham chiến trên Render!");
+  });
 
-    for t in tasks:
-        if not t.done():
-            t.cancel()
+  process.once("SIGINT", () => bot.stop("SIGINT"));
+  process.once("SIGTERM", () => bot.stop("SIGTERM"));
+}
 
-    try:
-        await app.send_message(chat_id, f"🏁 **KẾT THÚC ĐỢT XẢ** | Tổng lực hoàn thành: **{stats['count']}** đòn!")
-    except Exception:
-        pass
-
-# ==================== LỆNH TẤN CÔNG & ĐIỀU KHIỂN ====================
-@app.on_message(filters.command("tancoc"))
-async def cmd_tancoc(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    t, mn = await resolve(m)
-    if not t:
-        return await m.reply("❌ Cú pháp: `/tancoc @user` hoặc reply tin nhắn")
-    asyncio.create_task(supreme_engine(m.chat.id, m.from_user.id, t, mn, "tancoc", workers_count=1))
-
-@app.on_message(filters.command("cuongbao"))
-async def cmd_cuongbao(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    t, mn = await resolve(m)
-    if not t:
-        return await m.reply("❌ Cú pháp: `/cuongbao @user` (Turbo x3 luồng)")
-    asyncio.create_task(supreme_engine(m.chat.id, m.from_user.id, t, mn, "tancoc", workers_count=3))
-
-@app.on_message(filters.command("tamxa"))
-async def cmd_tamxa(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    t, mn = await resolve(m)
-    if not t:
-        return await m.reply("❌ Cú pháp: `/tamxa @user` hoặc reply tin nhắn")
-    asyncio.create_task(supreme_engine(m.chat.id, m.from_user.id, t, mn, "tamxa", workers_count=1))
-
-@app.on_message(filters.command("phatngon"))
-async def cmd_phatngon(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    p = m.text.split(None, 1)
-    if len(p) < 2:
-        return await m.reply("❌ Cú pháp: `/phatngon <nội dung>`")
-    mn = m.reply_to_message.from_user.mention if (m.reply_to_message and m.reply_to_message.from_user) else ""
-    asyncio.create_task(supreme_engine(m.chat.id, m.from_user.id, m.chat.id, mn, "phatngon", content=p[1]))
-
-@app.on_message(filters.command("diemdanh"))
-async def cmd_diemdanh(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    mn = m.reply_to_message.from_user.mention if (m.reply_to_message and m.reply_to_message.from_user) else ""
-    asyncio.create_task(supreme_engine(m.chat.id, m.from_user.id, m.chat.id, mn, "diemdanh"))
-
-@app.on_message(filters.command("baobi"))
-async def cmd_baobi(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    mn = m.reply_to_message.from_user.mention if (m.reply_to_message and m.reply_to_message.from_user) else ""
-    asyncio.create_task(supreme_engine(m.chat.id, m.from_user.id, m.chat.id, mn, "baobi"))
-
-@app.on_message(filters.command("satngon"))
-async def cmd_satngon(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    t, mn = await resolve(m)
-    if not t:
-        t = m.chat.id
-        mn = ""
-    asyncio.create_task(supreme_engine(m.chat.id, m.from_user.id, t, mn, "satngon", workers_count=2))
-
-@app.on_message(filters.command("dinhchi"))
-async def cmd_dinhchi(_, m: Message):
-    tid = f"{m.chat.id}_{m.from_user.id}"
-    if is_adm(m.from_user.id):
-        stopped = sum(1 for k in list(db.get("tasks", {})) if str(m.chat.id) in k and db["tasks"].pop(k, False))
-        db["spam_active"] = {k: v for k, v in db.get("spam_active", {}).items() if str(m.chat.id) not in k}
-        save_db()
-        return await m.reply(f"🛑 Đã dừng toàn bộ **{stopped}** chiến dịch trong nhóm!")
-    if db.get("tasks", {}).get(tid):
-        db["tasks"][tid] = False
-        db["spam_active"][tid] = False
-        save_db()
-        await m.reply("🛑 Đã dừng chiến dịch cá nhân của bạn!")
-    else:
-        await m.reply("⚠️ Hiện không có tiến trình nào đang chạy.")
-
-@app.on_message(filters.command("tocdo"))
-async def cmd_tocdo(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    p = m.text.split()
-    if len(p) == 1:
-        return await m.reply(
-            f"⚡ **TỐC ĐỘ XẢ:** `{db.get('delay', 0.0001)}s/đòn`\nChọn bên dưới hoặc cấu hình: `/tocdo 0.001`",
-            reply_markup=speed_kb()
-        )
-    try:
-        v = float(p[1].lower().rstrip("s"))
-        v = max(v, 0.00001)
-        db["delay"] = v
-        save_db()
-        await m.reply(f"✅ Đã cập nhật tốc độ thành: **{v}s/đòn**")
-    except ValueError:
-        await m.reply("❌ Định dạng số không hợp lệ!")
-
-@app.on_callback_query(filters.regex(r"^akspd_"))
-async def cb_speed_change(_, cq: CallbackQuery):
-    try:
-        v = float(cq.data.split("_")[1])
-        db["delay"] = v
-        save_db()
-        await cq.answer(f"Đã lưu: {v}s")
-        await cq.message.edit_text(f"✅ Đã thiết lập vận tốc: **{v}s/đòn**")
-    except Exception as e:
-        await cq.answer(f"Lỗi: {e}", show_alert=True)
-
-# ==================== NÂNG CẤP: QUẢN LÝ KHO NGÔN TỪ & NẠP FILE TXT ====================
-@app.on_message(filters.command("themngon"))
-async def cmd_themngon(_, m: Message):
-    if not is_adm(m.from_user.id):
-        return await m.reply("❌ Chỉ Thống Soái mới có quyền nạp ngôn từ!")
-    p = m.text.split(None, 1)
-    if len(p) < 2:
-        return await m.reply("💡 Cú pháp: `/themngon Câu 1 | Câu 2 | Câu 3`")
-    
-    global memory_corpus
-    raw_entries = p[1].split("|")
-    new_added = 0
-    current_set = set(memory_corpus)
-
-    for item in raw_entries:
-        cleaned = re.sub(r"^\d+[\.\)]\s*", "", item).strip()
-        if len(cleaned) >= 2 and cleaned not in current_set:
-            current_set.add(cleaned)
-            new_added += 1
-
-    memory_corpus = sorted(list(current_set))
-    save_corpus_list(memory_corpus)
-    await m.reply(f"✅ **ĐÃ THÊM THÀNH CÔNG:**\n➕ Thêm mới: `{new_added}` câu\n📚 Tổng kho hiện tại: `{len(memory_corpus)}` câu")
-
-@app.on_message(filters.command("napfile") | (filters.document & filters.caption))
-async def cmd_napfile(_, m: Message):
-    if not is_adm(m.from_user.id):
-        return
-    
-    doc = m.document
-    caption = m.caption or m.text or ""
-    
-    if not doc and m.reply_to_message and m.reply_to_message.document:
-        doc = m.reply_to_message.document
-    
-    if not doc or not doc.file_name.lower().endswith(".txt"):
-        if "/napfile" in caption:
-            return await m.reply("💡 Vui lòng gửi đính kèm file `.txt` hoặc reply file `.txt` với lệnh `/napfile`")
-        return
-
-    if "/napfile" not in caption and not (m.text and m.text.startswith("/napfile")):
-        return
-
-    status = await m.reply("⏳ Đang tải file và tiến hành khử trùng lặp (Deduplication)...")
-    global memory_corpus
-    
-    try:
-        download_path = await app.download_media(doc)
-        content = Path(download_path).read_text(encoding="utf-8", errors="ignore")
-        Path(download_path).unlink(missing_ok=True)
-        
-        lines = content.splitlines()
-        current_set = set(memory_corpus)
-        initial_count = len(current_set)
-        
-        for line in lines:
-            cleaned = re.sub(r"^\d+[\.\)]\s*", "", line).strip()
-            if len(cleaned) >= 2:
-                current_set.add(cleaned)
-        
-        new_count = len(current_set)
-        added = new_count - initial_count
-        
-        memory_corpus = sorted(list(current_set))
-        save_corpus_list(memory_corpus)
-        
-        await status.edit_text(
-            f"✅ **XỬ LÝ FILE TXT HOÀN TẤT!**\n"
-            f"📄 Tệp: `{doc.file_name}`\n"
-            f"📥 Đã quét: `{len(lines)}` dòng\n"
-            f"✨ Thêm mới (không trùng): `{added}` câu\n"
-            f"📊 Tổng kho từ vựng hiện tại: `{len(memory_corpus)}` câu"
-        )
-    except Exception as e:
-        await status.edit_text(f"❌ Xảy ra lỗi xử lý file: `{e}`")
-
-@app.on_message(filters.command("kho"))
-async def cmd_kho(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    total = len(memory_corpus)
-    sample = "\n".join(f"• {x}" for x in random.sample(memory_corpus, min(5, total)))
-    await m.reply(
-        f"📊 **KHO VŨ KHÍ TỪ VỰNG ANH KHÔI**\n"
-        f"Tổng số câu khả dụng: `{total}`\n\n"
-        f"🔍 **Trích mẫu ngẫu nhiên:**\n{sample}\n\n"
-        f"💡 Thêm mới: `/themngon` hoặc gửi file .txt kèm `/napfile`"
-    )
-
-@app.on_message(filters.command("xoangon"))
-async def cmd_xoangon(_, m: Message):
-    if not is_adm(m.from_user.id):
-        return await m.reply("❌ Chỉ Thống Soái mới có quyền xoá!")
-    p = m.text.split(None, 1)
-    if len(p) < 2:
-        return await m.reply("💡 Cú pháp: `/xoangon <từ_khóa>` để xóa câu chứa từ khóa")
-    keyword = p[1].strip().lower()
-    global memory_corpus
-    before = len(memory_corpus)
-    memory_corpus = [x for x in memory_corpus if keyword not in x.lower()]
-    deleted = before - len(memory_corpus)
-    save_corpus_list(memory_corpus)
-    await m.reply(f"🗑️️ Đã xóa `{deleted}` câu chứa từ khóa `{keyword}`. Còn lại: `{len(memory_corpus)}` câu.")
-
-# ==================== QUẢN TRỊ NHÓM VÀ BẢN QUYỀN ====================
-@app.on_message(filters.command(["dondep", "quetgon"]))
-async def cmd_dondep(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    p = m.text.split()
-    count = 20
-    tuid = None
-    for x in p[1:]:
-        if x.startswith("@"):
-            try:
-                u = await app.get_users(x.lstrip("@"))
-                tuid = u.id
-            except Exception:
-                pass
-        else:
-            try:
-                count = int(x)
-            except ValueError:
-                pass
-    count = min(count, 300)
-    deleted = 0
-    ids = []
-    try:
-        async for msg in app.get_chat_history(m.chat.id, limit=count + 30):
-            if deleted >= count:
-                break
-            if tuid and msg.from_user and msg.from_user.id != tuid:
-                continue
-            ids.append(msg.id)
-            deleted += 1
-        for i in range(0, len(ids), 100):
-            batch = ids[i:i + 100]
-            try:
-                await app.delete_messages(m.chat.id, batch)
-            except Exception:
-                for mid in batch:
-                    try:
-                        await app.delete_messages(m.chat.id, [mid])
-                        await asyncio.sleep(0.01)
-                    except Exception:
-                        pass
-    except Exception as e:
-        return await m.reply(f"❌ {e}")
-    try:
-        n = await m.reply(f"🧹 Đã dọn dẹp `{deleted}` tin nhắn!")
-        await asyncio.sleep(2)
-        await n.delete()
-    except Exception:
-        pass
-
-@app.on_message(filters.command("camkhau"))
-async def cmd_camkhau(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    t, _ = await resolve(m)
-    if not t or t in all_adm():
-        return await m.reply("❌ Cú pháp: `/camkhau @user [phút]`")
-    p = m.text.split()
-    mins = int(p[2]) if len(p) > 2 and p[2].isdigit() else 0
-    until = datetime.now(timezone.utc) + timedelta(minutes=mins) if mins else None
-    try:
-        await app.restrict_chat_member(m.chat.id, t, ChatPermissions(can_send_messages=False), until_date=until)
-        await m.reply(f"🔇 Đã cấm khẩu mục tiêu ({'vĩnh viễn' if not mins else f'{mins} phút'})!")
-    except ChatAdminRequired:
-        await m.reply("❌ Bot cần quyền Admin để thao tác!")
-    except Exception as e:
-        await m.reply(f"❌ Lỗi: {e}")
-
-@app.on_message(filters.command("khaitro"))
-async def cmd_khaitro(_, m: Message):
-    if (r := await chk(m)) != "ok":
-        return await deny(m, r)
-    t, _ = await resolve(m)
-    if not t:
-        return await m.reply("❌ Cú pháp: `/khaitro @user`")
-    try:
-        await app.restrict_chat_member(
-            m.chat.id,
-            t,
-            ChatPermissions(
-                can_send_messages=True,
-                can_send_media_messages=True,
-                can_send_other_messages=True,
-                can_add_web_page_previews=True,
-            ),
-        )
-        await m.reply("🔊 Đã mở khóa mõm!")
-    except Exception as e:
-        await m.reply(f"❌ Lỗi: {e}")
-
-@app.on_message(filters.command("capma"))
-async def cmd_capma(_, m: Message):
-    if not is_adm(m.from_user.id):
-        return
-    try:
-        p = m.text.split()
-        days = int(p[1])
-        devs = int(p[2])
-        note = " ".join(p[3:]) if len(p) > 3 else ""
-        k = gen_key()
-        db["keys"][k] = {
-            "days": days,
-            "devs": devs,
-            "users": [],
-            "note": note,
-            "created": datetime.now().isoformat(),
-            "by": m.from_user.id,
-        }
-        save_db()
-        await m.reply(f"🔑 **MÃ ĐÃ TẠO BỞI ANH KHÔI!**\n`{k}`\n📅 {days} ngày | 💻 {devs} máy")
-    except Exception:
-        await m.reply("💡 Cú pháp: `/capma <ngày> <số_máy> [ghi chú]`")
-
-@app.on_message(filters.command("nhapma"))
-async def cmd_nhapma(_, m: Message):
-    p = m.text.split()
-    uid = m.from_user.id
-    if len(p) < 2:
-        return await m.reply("💡 Cú pháp: `/nhapma <KEY>`")
-    k = p[1]
-    if k not in db.get("keys", {}):
-        return await m.reply("❌ Mã kích hoạt không tồn tại!")
-    kd = db["keys"][k]
-    if uid in kd["users"]:
-        return await m.reply("ℹ️ Bạn đã kích hoạt mã này trước đó!")
-    if len(kd["users"]) >= kd["devs"]:
-        return await m.reply("❌ Mã đã hết lượt sử dụng!")
-    exp = datetime.now() + timedelta(days=kd["days"])
-    db["users"][uid] = exp.isoformat()
-    kd["users"].append(uid)
-    save_db()
-    await m.reply(f"✅ **KÍCH HOẠT THÀNH CÔNG!**\n📅 Thời hạn đến: {exp.strftime('%d/%m/%Y %H:%M')}")
-
-@app.on_message(filters.command("kiemtrama"))
-async def cmd_kiemtrama(_, m: Message):
-    uid = m.from_user.id
-    if is_adm(uid):
-        return await m.reply("👑 Anh Khôi Tối Cao – Quyền năng vĩnh cửu!")
-    exp = db.get("users", {}).get(uid)
-    if not exp:
-        return await m.reply("❌ Bạn chưa kích hoạt mã bản quyền!")
-    try:
-        dt = datetime.fromisoformat(str(exp))
-        rem = dt - datetime.now()
-        if rem.total_seconds() < 0:
-            return await m.reply("⏰ Mã kích hoạt của bạn đã hết hạn!")
-        await m.reply(f"✅ **BẢN QUYỀN HỢP LỆ**\n📅 Hạn dùng: {dt.strftime('%d/%m/%Y %H:%M')}\n⏳ Còn: {rem.days} ngày {rem.seconds // 3600} giờ")
-    except Exception:
-        await m.reply("❌ Lỗi dữ liệu bản quyền!")
-
-@app.on_message(filters.command(["lenh", "help", "start"]))
-async def cmd_help(_, m: Message):
-    uid = m.from_user.id if m.from_user else 0
-    msg_body = (
-        f"⚡ **{BOT_NAME}** ⚡\n"
-        f"👑 Tác giả độc quyền: **Anh Khôi**\n"
-        f"🌐 Hệ thống: **Render 24/7 Engine**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"**⚔️️ HỎA LỰC TẤN CÔNG:**\n"
-        f"`/tancoc @user` — Bão hỏa lực nhóm\n"
-        f"`/cuongbao @user` — Cuồng bạo x3 luồng cực hạn\n"
-        f"`/tamxa @user` — Xả tin nhắn riêng (DM)\n"
-        f"`/phatngon <text>` — Bắn văn bản tự chọn\n"
-        f"`/diemdanh` — Bão số thứ tự\n"
-        f"`/baobi` — Mưa ký tự Cyber/Gothic\n"
-        f"`/satngon @user` — Xả ngôn từ sát thương cao\n"
-        f"`/dinhchi` — Ngắt mọi tiến trình\n"
-        f"`/tocdo` — Tinh chỉnh trễ mili-giây\n\n"
-        f"**📚 QUẢN LÝ KHO NGÔN TỪ:**\n"
-        f"`/kho` — Thống kê và xem mẫu câu trong kho\n"
-        f"`/themngon <câu 1 | câu 2>` — Thêm trực tiếp\n"
-        f"`/napfile` — Gửi đính kèm file `.txt` để nạp kho\n"
-        f"`/xoangon <từ khóa>` — Lọc xoá từ kho\n\n"
-        f"**🏠 QUẢN TRỊ & BẢN QUYỀN:**\n"
-        f"`/dondep <số>` — Thanh lọc tin nhắn\n"
-        f"`/camkhau @user` — Khóa mõm\n"
-        f"`/khaitro @user` — Mở khóa\n"
-        f"`/nhapma <MÃ>` — Kích hoạt quyền sử dụng\n"
-        f"`/kiemtrama` — Kiểm tra hạn bản quyền"
-    )
-    if is_adm(uid):
-        msg_body += "\n\n**👑 QUẢN TRỊ:** `/capma` | Quản lý độc quyền Thống Soái"
-    await m.reply(msg_body)
-
-# ==================== ENTRYPOINT MAIN ====================
-async def main():
-    await start_render_web_server()
-    await app.start()
-    print("[*] Telegram Bot Anh Khôi đã sẵn sàng thực thi trên Render!")
-
-    try:
-        await app.set_bot_commands([
-            BotCommand("lenh", "Danh sách chức năng"),
-            BotCommand("tancoc", "Bão hỏa lực nhóm"),
-            BotCommand("cuongbao", "Cuồng bạo x3 luồng"),
-            BotCommand("tamxa", "Bắn phá tin nhắn riêng"),
-            BotCommand("phatngon", "Xả văn bản chỉ định"),
-            BotCommand("diemdanh", "Bão số đếm"),
-            BotCommand("baobi", "Mưa icon Cyber/Gothic"),
-            BotCommand("satngon", "Xả kho ngôn từ"),
-            BotCommand("kho", "Xem thống kê kho ngôn"),
-            BotCommand("dinhchi", "Dừng tiến trình tấn công"),
-            BotCommand("tocdo", "Cài đặt vận tốc"),
-            BotCommand("dondep", "Dọn dẹp tin nhắn"),
-            BotCommand("nhapma", "Nhập mã kích hoạt"),
-            BotCommand("kiemtrama", "Kiểm tra hạn dùng"),
-        ])
-    except Exception:
-        pass
-
-    await asyncio.Event().wait()
-
-if __name__ == "__main__":
-    app.run(main())
+bootstrap();
