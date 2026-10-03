@@ -1,7 +1,7 @@
 {
-  "name": "anhkhoi-war-supreme",
-  "version": "3.0.0",
-  "description": "Anh Khoi War Supreme Engine - Render Native Node.js",
+  "name": "khaos-titan-supreme",
+  "version": "4.0.0",
+  "description": "Anh Khoi War Supreme Engine - Apex Auto-Heal",
   "main": "anhkhoi_war_supreme.js",
   "scripts": {
     "start": "node anhkhoi_war_supreme.js"
