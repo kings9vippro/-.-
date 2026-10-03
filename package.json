@@ -1,12 +1,14 @@
 {
-  "name": "anhkhoi-war-supreme-bot",
-  "version": "2026.1.0",
-  "description": "Ultra Fast Cyber War Engine Telegram Bot - Proprietary Edition of Anh Khoi",
-  "main": "AnhKhoi_War_Supreme.py",
+  "name": "anhkhoi-war-supreme",
+  "version": "2.0.0",
+  "description": "Anh Khoi War Supreme Engine for Render Deployment",
+  "main": "anhkhoi_war_supreme.py",
   "scripts": {
-    "start": "python3 AnhKhoi_War_Supreme.py",
-    "prod": "python3 -O AnhKhoi_War_Supreme.py"
+    "start": "python3 anhkhoi_war_supreme.py"
   },
-  "author": "Phạm Anh Khôi (Dev Anh Khôi)",
-  "license": "ISC"
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Anh Khoi",
+  "license": "MIT"
 }
