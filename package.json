@@ -1,14 +1,15 @@
 {
   "name": "anhkhoi-war-supreme",
-  "version": "2.0.0",
-  "description": "Anh Khoi War Supreme Engine for Render Deployment",
-  "main": "anhkhoi_war_supreme.py",
+  "version": "3.0.0",
+  "description": "Anh Khoi War Supreme Engine - Render Native Node.js",
+  "main": "anhkhoi_war_supreme.js",
   "scripts": {
-    "start": "python3 anhkhoi_war_supreme.py"
+    "start": "node anhkhoi_war_supreme.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3"
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "author": "Anh Khoi",
-  "license": "MIT"
+  }
 }
