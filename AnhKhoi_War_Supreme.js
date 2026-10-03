@@ -1,6 +1,7 @@
-import asyncio, random, string, json, re, time, sys
+import asyncio, random, string, json, re, time, sys, os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.types import (
     BotCommand, ChatPermissions, Message,
@@ -11,7 +12,7 @@ from pyrogram.errors import (
     PeerIdInvalid, ChatAdminRequired, BadRequest
 )
 
-# Kích hoạt uvloop để tối ưu hóa event loop đạt xung nhịp cực đại trên Linux
+# Kích hoạt uvloop để tối ưu hóa event loop trên môi trường Linux của Render
 if sys.platform != "win32":
     try:
         import uvloop
@@ -20,9 +21,9 @@ if sys.platform != "win32":
         pass
 
 # ==================== CẤU HÌNH HỆ THỐNG ANH KHÔI ====================
-API_ID       = 32906102         # Điền API_ID từ my.telegram.org của bạn
-API_HASH     = "9fc3add5b6bf34cc5335a85388f34a0f"        # Điền API_HASH từ my.telegram.org của bạn
-BOT_TOKEN    = "8251965879:AAFHl0iLezOJrjQLxWQHeMc1RoK8ul7-K7g"
+API_ID       = int(os.environ.get("API_ID", 32906102))
+API_HASH     = os.environ.get("API_HASH", "9fc3add5b6bf34cc5335a85388f34a0f")
+BOT_TOKEN    = os.environ.get("BOT_TOKEN", "8251965879:AAFHl0iLezOJrjQLxWQHeMc1RoK8ul7-K7g")
 
 SUPER_ADMINS = [6094686933]
 BOT_NAME     = "亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗"
@@ -39,6 +40,25 @@ REF_FREE_HOURS = 12
 DB_FILE      = "anhkhoi_db.json"
 INSF_FILE    = "anhkhoi_insults.json"
 EXTERNAL_TXT = "100.000 ngôn idea hqh.txt"
+
+# ==================== WEB SERVER GIỮ BOT SỐNG TRÊN RENDER ====================
+async def web_health(request):
+    return web.Response(
+        text=f"{BOT_NAME}\nSTATUS: ONLINE 24/7 TRÊN RENDER\nCHỦ NHÂN: ANH KHÔI",
+        status=200,
+        content_type="text/plain; charset=utf-8"
+    )
+
+async def start_render_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    app_web = web.Application()
+    app_web.router.add_get("/", web_health)
+    app_web.router.add_get("/health", web_health)
+    runner = web.AppRunner(app_web)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"[*] Render Web Server đã khởi chạy thành công trên Port: {port}")
 
 # ==================== CƠ SỞ DỮ LIỆU BẢN QUYỀN ====================
 def _ddb():
@@ -72,7 +92,7 @@ db = ldb()
 def all_adm(): return SUPER_ADMINS + [x for x in db["admins"] if x not in SUPER_ADMINS]
 def is_adm(u): return u in SUPER_ADMINS or u in db["admins"]
 
-# ==================== BIỂU TƯỢNG HIỆN ĐẠI (CYBER / GOTHIC / DARK LUXURY) ====================
+# ==================== BIỂU TƯỢNG HIỆN ĐẠI (CYBER / GOTHIC) ====================
 SUOC_MODERN = [
     "亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗",
     "𓆩✧𓆪 𖤍 𝗖𝗬𝗕𝗘𝗥 𝗪𝗔𝗥𝗟𝗢𝗥𝗗 𝗔𝗡𝗛 𝗞𝗛𝗢̂𝗜 𖤍 𓆩✧𓆪",
@@ -96,7 +116,7 @@ def lol(n=None):
     if n is None: n = random.randint(3, 16)
     return "=" + ")" * n
 
-# ==================== KHO TOÀN BỘ NGÔN TỪ 100.000 IDEA ====================
+# ==================== KHO TOÀN BỘ NGÔN TỪ ====================
 RAW_IDEAS_SOURCE = [
     "Dit me may, song nhu cai lon rach ma cung du war",
     "Cai mat may nhin nhu lo dit bi dam sung",
@@ -329,7 +349,6 @@ async def supreme_engine(chat_id, user_id, target, mention, mode="tancoc", conte
         )
     except: pass
 
-    # Khởi chạy đa luồng đồng thời
     tasks = [
         asyncio.create_task(turbo_worker(chat_id, target, mention, mode, content, tid, stats))
         for _ in range(workers_count)
@@ -360,8 +379,7 @@ async def supreme_engine(chat_id, user_id, target, mention, mode="tancoc", conte
         await app.send_message(chat_id, f"🏁 **KẾT THÚC CÀN QUÉT** | Tổng lực: **{stats['count']}** đòn kết liễu!")
     except: pass
 
-# ==================== DANH SÁCH LỆNH TẤN CÔNG (MODERN COMMANDS) ====================
-
+# ==================== DANH SÁCH LỆNH TẤN CÔNG ====================
 @app.on_message(filters.command("tancoc"))
 async def cmd_tancoc(_, m):
     if (r := await chk(m)) != "ok": return await deny(m, r)
@@ -436,7 +454,7 @@ async def cmd_tocdo(_, m):
     if len(p) == 1:
         return await m.reply(
             f"⚡ **TỐC ĐỘ HỎA LỰC ANH KHÔI**\nHiện tại: `{db.get('delay', 0.0001)}s/đòn`\n\n"
-            "Chọn tốc độ hoặc thiết lập thủ công: `/tocdo 0.0001`",
+            "Chọn tốc độ hoặc thiết lập: `/tocdo 0.0001`",
             reply_markup=speed_kb())
     try:
         v = float(p[1].lower().rstrip("s"))
@@ -485,44 +503,6 @@ async def cmd_dondep(_, m: Message):
         note = await m.reply(f"🧹 Anh Khôi đã thanh trừng sạch sẽ **{deleted}** tin nhắn!")
         await asyncio.sleep(2.5); await note.delete()
     except: pass
-
-@app.on_message(filters.command("tracuu"))
-async def cmd_tracuu(_, m: Message):
-    if (r := await chk(m)) != "ok": return await deny(m, r)
-    u = None
-    if m.reply_to_message and m.reply_to_message.from_user: u = m.reply_to_message.from_user
-    elif len(m.text.split()) > 1:
-        try: u = await app.get_users(m.text.split()[1].lstrip("@"))
-        except: return await m.reply("❌ Không tìm thấy đối tượng!")
-    else: u = m.from_user
-    await m.reply(
-        f"📋 **HỒ SƠ ĐỐI TƯỢNG**\n━━━━━━━━━━━━━━━━\n"
-        f"👤 Tên: {u.first_name} {u.last_name or ''}\n"
-        f"🆔 ID: `{u.id}`\n📛 Username: @{u.username or 'N/A'}\n"
-        f"🤖 Bot: {'Có' if u.is_bot else 'Không'} · ⭐ Premium: {'Có' if getattr(u, 'is_premium', False) else 'Không'}")
-
-@app.on_message(filters.command("trieuhoi"))
-async def cmd_trieuhoi(_, m):
-    if (r := await chk(m)) != "ok": return await deny(m, r)
-    mems = []
-    async for mem in app.get_chat_members(m.chat.id):
-        if not mem.user.is_bot and not mem.user.is_deleted: mems.append(mem.user.mention)
-    for i in range(0, len(mems), 10):
-        try: await m.reply(" ".join(mems[i:i + 10])); await asyncio.sleep(0.4)
-        except FloodWait as e: await asyncio.sleep(e.value)
-
-@app.on_message(filters.command("lanhtho"))
-async def cmd_lanhtho(_, m):
-    if not is_adm(m.from_user.id): return
-    actives = [k for k, v in db.get("spam_active", {}).items() if v]
-    gs = db.get("groups", {}); lines = []
-    for cid, info in list(gs.items())[:20]:
-        is_sp = any(cid in a for a in actives)
-        lines.append(f"{'🔴' if is_sp else '🟢'} **{info['title']}** (`{cid}`)")
-    await m.reply(
-        f"📊 **LÃNH THỔ ANH KHÔI**\n━━━━━━━━━━━━━━━━\n"
-        f"🔴 Đang thanh trừng: **{len(actives)}** | 📦 Tổng địa bàn: **{len(gs)}**\n\n" +
-        ("\n".join(lines) or "Trống"))
 
 @app.on_message(filters.command("camkhau"))
 async def cmd_camkhau(_, m):
@@ -596,7 +576,6 @@ async def cmd_giaiphong(_, m):
     except Exception as e: await m.reply(f"❌ {e}")
 
 # ==================== HỆ THỐNG MÃ BẢN QUYỀN ====================
-
 @app.on_message(filters.command("capma"))
 async def cmd_capma(_, m):
     if not is_adm(m.from_user.id): return
@@ -609,23 +588,6 @@ async def cmd_capma(_, m):
         await m.reply(f"🔑 **MÃ ĐÃ TẠO BỞI ANH KHÔI!**\n`{k}`\n📅 {days} ngày | 💻 {devs} thiết bị | 📝 {note or '-'}")
     except:
         await m.reply("💡 Cú pháp: `/capma <ngày> <số_máy> [ghi chú]`")
-
-@app.on_message(filters.command("huyma"))
-async def cmd_huyma(_, m):
-    if not is_adm(m.from_user.id): return
-    p = m.text.split()
-    if len(p) < 2: return await m.reply("💡 `/huyma <KEY>`")
-    if p[1] in db["keys"]:
-        del db["keys"][p[1]]; sdb()
-        await m.reply(f"🗑️ Đã hủy mã `{p[1]}`")
-    else: await m.reply("❌ Mã không tồn tại!")
-
-@app.on_message(filters.command("khoma"))
-async def cmd_khoma(_, m):
-    if not is_adm(m.from_user.id): return
-    if not db["keys"]: return await m.reply("📭 Kho mã trống!")
-    lines = [f"🔑 `{k}` {v['days']}n ({len(v.get('users',[]))}/{v['devs']} máy) {v.get('note','')}" for k, v in list(db["keys"].items())[:20]]
-    await m.reply("📋 **KHO MÃ ANH KHÔI**\n" + "\n".join(lines))
 
 @app.on_message(filters.command("nhapma"))
 async def cmd_nhapma(_, m):
@@ -652,96 +614,14 @@ async def cmd_kiemtrama(_, m):
         await m.reply(f"✅ **BẢN QUYỀN HỢP LỆ**\n📅 Hạn dùng: {dt.strftime('%d/%m/%Y %H:%M')}\n⏳ Còn lại: {rem.days} ngày {rem.seconds // 3600} giờ")
     except: await m.reply("❌ Lỗi dữ liệu mã!")
 
-# ==================== LỆNH ADMIN ĐẶC QUYỀN ====================
-
-@app.on_message(filters.command("phongsoai") & filters.user(SUPER_ADMINS))
-async def cmd_phongsoai(_, m):
-    u = await get_tu(m)
-    if not u: return await m.reply("💡 `/phongsoai @user`")
-    if u.id not in db["admins"]:
-        db["admins"].append(u.id); sdb()
-        await m.reply(f"✅ Đã phong chức **Phó Soái** cho {u.mention}!")
-    else: await m.reply("ℹ️ Đã có chức vị!")
-
-@app.on_message(filters.command("baiquan") & filters.user(SUPER_ADMINS))
-async def cmd_baiquan(_, m):
-    u = await get_tu(m)
-    if u and u.id in db["admins"]:
-        db["admins"].remove(u.id); sdb()
-        await m.reply(f"✅ Đã bãi chức {u.mention}")
-    else: await m.reply("ℹ️ Không phải phó soái.")
-
-@app.on_message(filters.command("tongquan") & filters.user(SUPER_ADMINS))
-async def cmd_tongquan(_, m):
-    sa = "\n".join(f"⭐ `{x}` (Thống soái Anh Khôi)" for x in SUPER_ADMINS)
-    pa = "\n".join(f"• `{x}`" for x in db["admins"]) or "Không có"
-    await m.reply(f"👮 **HỆ THỐNG ĐIỀU HÀNH ANH KHÔI**\n\n**Chủ Tịch Tối Cao:**\n{sa}\n\n**Phó Soái:**\n{pa}")
-
-@app.on_message(filters.command("khoathanh") & filters.user(SUPER_ADMINS))
-async def cmd_khoathanh(_, m):
-    p = m.text.split()
-    if len(p) < 2: return await m.reply("💡 `/khoathanh on` hoặc `/khoathanh off`")
-    db["server_key"] = (p[1].lower() == "on"); sdb()
-    await m.reply(f"🔒 Chế độ khóa bản quyền: **{'BẬT' if db['server_key'] else 'TẮT'}**")
-
-@app.on_message(filters.command("camdung") & filters.user(SUPER_ADMINS))
-async def cmd_camdung(_, m):
-    u = await get_tu(m)
-    if not u or u.id in SUPER_ADMINS: return
-    if u.id not in db["banned"]:
-        db["banned"].append(u.id); sdb(); await m.reply(f"🚫 Phong sát vĩnh viễn {u.mention}")
-
-@app.on_message(filters.command("anhxa") & filters.user(SUPER_ADMINS))
-async def cmd_anhxa(_, m):
-    u = await get_tu(m)
-    if u and u.id in db["banned"]:
-        db["banned"].remove(u.id); sdb(); await m.reply(f"✅ Ân xá cho {u.mention}")
-
-@app.on_message(filters.command("napngon") & filters.user(SUPER_ADMINS))
-async def cmd_napngon(_, m):
-    p = m.text.split(None, 1)
-    if len(p) < 2: return await m.reply("💡 `/napngon <câu mới>`")
-    new_ins = p[1].strip()
-    if not new_ins.rstrip().endswith(")"): new_ins = new_ins + " " + lol()
-    _learned_ins.append(new_ins)
-    save_learned_insults(_learned_ins)
-    await m.reply(f"✅ Đã nạp thêm ngôn từ! Tổng kho: **{len(WAR_INSULTS) + len(_learned_ins)}** câu\n_{new_ins}_")
-
-@app.on_message(filters.command("thongso") & filters.user(SUPER_ADMINS))
-async def cmd_thongso(_, m):
-    active = sum(1 for v in db.get("tasks", {}).values() if v)
-    await m.reply(
-        f"📊 **THỐNG SỐ CHIẾN BÁO {BOT_NAME}**\n━━━━━━━━━━━━━━━━\n"
-        f"📦 Địa bàn nhóm: **{len(db['groups'])}** | ⚡ Đang đồ sát: **{active}**\n"
-        f"🔑 Mã đã cấp: **{len(db['keys'])}** | 👥 Người dùng: **{len(db['users'])}**\n"
-        f"🚫 Đã phong sát: **{len(db['banned'])}**\n"
-        f"💬 Tổng kho ngôn: **{len(WAR_INSULTS) + len(_learned_ins)}** câu sát thương\n"
-        f"⚡ Vận tốc cơ sở: **{db.get('delay', 0.0001)}s** | 🔒 Bản quyền: **{'BẬT' if db['server_key'] else 'TẮT'}**")
-
-# ==================== BẢO VỆ CHỦ NHÂN ANH KHÔI ====================
-_BAD_LEXICON = ["chó", "ngu", "đần", "phá", "chửi", "fuck", "shit", "địt", "cút", "mẹ", "phế"]
-@app.on_message(filters.all, group=-1)
-async def auto_protect_anhkhoi(_, m: Message):
-    if not m.from_user or is_adm(m.from_user.id): return
-    txt = m.text or m.caption or ""
-    for target in PROTECTED:
-        if target in txt.lower() and any(w in txt.lower() for w in _BAD_LEXICON):
-            try:
-                await m.delete()
-                await app.restrict_chat_member(m.chat.id, m.from_user.id,
-                    ChatPermissions(can_send_messages=False),
-                    until_date=datetime.now(timezone.utc) + timedelta(minutes=60))
-                await app.send_message(m.chat.id, f"⚠️ Kẻ xúc phạm {m.from_user.mention} đã bị Anh Khôi cấm khẩu 60 phút!\n⚡ {BOT_NAME}")
-            except: pass
-            break
-
-# ==================== MENU HƯỚNG DẪN CÔNG NĂNG ====================
+# ==================== MENU HƯỚNG DẪN ====================
 @app.on_message(filters.command(["lenh", "help", "start"]))
-async def cmd_lenh_supreme(_, m):
+async def cmd_lenh_render(_, m):
     uid = m.from_user.id if m.from_user else 0
     base = (
         f"⚡ **{BOT_NAME}** ⚡\n"
         f"👑 Tác giả độc quyền: **Anh Khôi**\n"
+        f"🌐 Hệ thống: **Đang chạy Render 24/7**\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"**⚔️ HỎA LỰC TẤN CÔNG:**\n"
         f"`/tancoc @user` — Bão hỏa lực nhóm\n"
@@ -760,45 +640,48 @@ async def cmd_lenh_supreme(_, m):
         f"`/trutxuat @user` — Đuổi thành viên\n"
         f"`/phongsat @user` — Cấm vĩnh viễn\n"
         f"`/giaiphong @user` — Gỡ lệnh cấm\n"
-        f"`/dondep <số>` — Dọn dẹp tin nhắn rác\n"
-        f"`/trieuhoi` — Réo gọi toàn bộ thành viên\n"
-        f"`/tracuu @user` — Xem lý lịch đối phương\n\n"
+        f"`/dondep <số>` — Dọn dẹp tin nhắn rác\n\n"
         f"**🔑 BẢN QUYỀN:**\n"
         f"`/nhapma <MÃ>` — Kích hoạt quyền sử dụng\n"
         f"`/kiemtrama` — Kiểm tra thời hạn"
     )
     admin_extra = (
         f"\n\n**👑 QUẢN TRỊ TỐI CAO:**\n"
-        f"`/capma` `/huyma` `/khoma`\n"
-        f"`/phongsoai` `/baiquan` `/tongquan`\n"
-        f"`/khoathanh on/off` · `/camdung` · `/anhxa`\n"
-        f"`/lanhtho` · `/napngon` · `/thongso`"
+        f"`/capma` `/camkhau` `/khaitro`"
     )
     await m.reply(base + (admin_extra if is_adm(uid) else ""))
 
+# ==================== ENTRYPOINT CHO RENDER ====================
 async def main():
+    # 1. Kích hoạt Web Server cho Render kiểm tra Port Binding
+    await start_render_web_server()
+    
+    # 2. Khởi động Pyrogram Client của Telegram
     await app.start()
+    print("[*] Telegram Bot Anh Khôi đã sẵn sàng xung trận!")
+    
     try:
         await app.set_bot_commands([
-            BotCommand("lenh", "📋 Danh sách quyền năng"),
+            BotCommand("lenh", "📋 Danh sách chức năng"),
             BotCommand("tancoc", "Bão hỏa lực nhóm"),
             BotCommand("cuongbao", "Cuồng nộ x3 luồng cực hạn"),
             BotCommand("tamxa", "Bắn phá tin nhắn riêng"),
             BotCommand("phatngon", "Xả văn bản chỉ định"),
             BotCommand("diemdanh", "Bão số đếm"),
             BotCommand("baobi", "Mưa icon Cyber/Gothic"),
-            BotCommand("satngon", "Xả kho ngôn từ 100.000 idea"),
+            BotCommand("satngon", "Xả kho ngôn từ"),
             BotCommand("dinhchi", "Dừng tấn công tức thì"),
             BotCommand("tocdo", "Cài đặt vận tốc"),
             BotCommand("dondep", "Thanh trừng tin nhắn"),
             BotCommand("camkhau", "Khóa mõm mục tiêu"),
             BotCommand("trutxuat", "Đuổi khỏi nhóm"),
             BotCommand("phongsat", "Khóa vĩnh viễn"),
-            BotCommand("tracuu", "Tra cứu thông tin"),
             BotCommand("nhapma", "Nhập mã bản quyền"),
             BotCommand("kiemtrama", "Kiểm tra hạn dùng"),
         ])
     except: pass
+
+    # Giữ tiến trình chạy vĩnh viễn
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
