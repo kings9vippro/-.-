@@ -1,0 +1,14 @@
+{
+  "name": "anhkhoi-war-supreme",
+  "version": "1.0.0",
+  "description": "Telegram Bot War & Health Server 24/7",
+  "main": "haha.js",
+  "type": "module",
+  "scripts": {
+    "start": "node haha.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {}
+}
