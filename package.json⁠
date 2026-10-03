@@ -1,0 +1,13 @@
+{
+  "name": "anhkhoi-war-supreme",
+  "version": "5.0.0",
+  "description": "Anh Khoi War Supreme Engine - Zero Dependency Native Node",
+  "main": "anhkhoi_war_supreme.js",
+  "type": "module",
+  "scripts": {
+    "start": "node anhkhoi_war_supreme.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
