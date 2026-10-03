@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: anhkhoi-war-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 AnhKhoi_War_Supreme.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+      - key: BOT_TOKEN
+        value: 8251965879:AAFHl0iLezOJrjQLxWQHeMc1RoK8ul7-K7g
+      - key: API_ID
+        value: 32906102
+      - key: API_HASH
+        value: 9fc3add5b6bf34cc5335a85388f34a0f
