@@ -1,0 +1,655 @@
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import * as http from "node:http";
+import * as crypto from "node:crypto";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PORT = Number(process.env.PORT) || 8080;
+const HOST = "0.0.0.0";
+const DATA_DIR = path.join(__dirname, "data");
+const DB_FILE = path.join(DATA_DIR, "anhkhoi_db.json");
+const CORPUS_FILE = path.join(DATA_DIR, "anhkhoi_corpus.json");
+
+// ==================== HẠT NHÂN THÔNG SỐ (HARDCODED) ====================
+const BOT_TOKEN = process.env.BOT_TOKEN || "8251965879:AAFHl0iLezOJrjQLxWQHeMc1RoK8ul7-K7g";
+const SUPER_ADMINS = ["6094686933"]; // ID ĐẶC QUYỀN CỦA ÔNG CHỦ (BYPASS TOÀN DIỆN)
+const BOT_NAME = "亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗";
+const FREE_BOT = "@treo_khoi_bot";
+const PROTECTED = ["anhkhoi", "anh_khoi", "pham_anh_khoi", "dev_anh_khoi", "6094686933"];
+
+if (!existsSync(DATA_DIR)) {
+  try { mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+}
+
+// ==================== QUẢN LÝ DỮ LIỆU & BẢN QUYỀN ====================
+function initDb() {
+  return {
+    server_key: true,
+    users: {},
+    keys: {},
+    banned: [],
+    auth: [],
+    admins: [],
+    delay: 0.0001
+  };
+}
+
+function loadDb() {
+  try {
+    if (existsSync(DB_FILE)) {
+      const data = JSON.parse(readFileSync(DB_FILE, "utf8"));
+      return Object.assign(initDb(), data);
+    }
+  } catch {}
+  return initDb();
+}
+
+function saveDb(d) {
+  try { writeFileSync(DB_FILE, JSON.stringify(d, null, 2)); } catch {}
+}
+
+const db = loadDb();
+
+// Kho ngôn từ mặc định
+const RAW_DEFAULT_CORPUS = [
+  "Dit me may, song nhu cai lon rach ma cung du war",
+  "Cai mat may nhin nhu lo dit bi dam sung",
+  "To tien may ma biet de ra thu nhu may chac tu khai tu dong ho",
+  "May chui tao a? Nhu cho sua vao tuong xi mang vay con a",
+  "Tao ma la may thi tao dap dau vao bon cau ma chet cho do nhuc",
+  "Thang oc cho nhu may di thi IQ chac bi duoi vi xuc pham chi so toi thieu",
+  "Bo may noi cau nao la may cam cau do, vi may la can ba xa hoi",
+  "Nao may nhu qua trung thoi chua no da len men",
+  "May la loi gen tram trong nhat trong lich su tao hoa",
+  "Anh Khôi đang online và mày vẫn thất bại toàn diện như thường",
+  "Quỳ xuống trước mặt Anh Khôi Độc Nhất Vô Nhị đi con phế vật",
+  "Đẳng cấp của Anh Khôi là thứ cả đời mày không bao giờ chạm tới được",
+  "Một đòn thanh tẩy của Anh Khôi đủ xóa sổ cả gia phả nhà mày"
+];
+
+function loadCorpus() {
+  const set = new Set(RAW_DEFAULT_CORPUS.map(s => s.trim()));
+  try {
+    if (existsSync(CORPUS_FILE)) {
+      const arr = JSON.parse(readFileSync(CORPUS_FILE, "utf8"));
+      if (Array.isArray(arr)) {
+        arr.forEach(item => {
+          if (typeof item === "string" && item.trim().length > 3) set.add(item.trim());
+        });
+      }
+    }
+  } catch {}
+  return [...set];
+}
+
+function saveCorpus(list) {
+  try {
+    const clean = [...new Set(list.map(s => s.trim()).filter(s => s.length > 3))].sort();
+    writeFileSync(CORPUS_FILE, JSON.stringify(clean, null, 2));
+  } catch {}
+}
+
+let memoryCorpus = loadCorpus();
+
+// ==================== BỘ LỌC ĐẶC QUYỀN CHO ÔNG CHỦ ====================
+function isAdm(uid) {
+  const u = String(uid);
+  return SUPER_ADMINS.includes(u) || (Array.isArray(db.admins) && db.admins.includes(u));
+}
+
+function checkAccess(uid) {
+  const u = String(uid);
+  if (db.banned && db.banned.includes(u)) return "banned";
+  if (isAdm(u)) return "ok"; // ÔNG CHỦ VÀ ADMIN ĐƯỢC BYPASS 100%
+  if (db.auth && db.auth.includes(u)) return "ok";
+
+  if (db.server_key) {
+    const exp = db.users[u];
+    if (!exp) return "key";
+    if (new Date(exp).getTime() < Date.now()) return "key";
+  }
+  return "ok";
+}
+
+function genKey() {
+  return "AK-VIP-" + crypto.randomBytes(4).toString("hex").toUpperCase();
+}
+
+// ==================== ASSETS GOTHIC / CYBER ====================
+const SUOC_MODERN = [
+  "亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗",
+  "𓆩✧𓆪 𖤍 𝗖𝗬𝗕𝗘𝗥 𝗪𝗔𝗥𝗟𝗢𝗥𝗗 𝗔𝗡𝗛 𝗞𝗛𝗢̂𝗜 𖤍 𓆩✧𓆪",
+  "𒆜 ☬ 𝕯𝕰𝕬𝕿𝕳 𝕽𝕰𝕬𝕷𝕸 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 ☬ 𒆜",
+  "🜲 𝕭𝕷𝕬𝕮𝕶 𝕰𝕸𝖄𝕴𝕽𝕰 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 🜲",
+  "𒀱 𝕴𝕹𝕱𝕰𝕽𝕹𝕺 𝕯𝕺𝕸𝕴𝕹𝕬𝕿𝕴𝕺𝕹 𒀱"
+];
+
+const ICONS_MODERN = ["亗", "𖤍", "🜲", "𓆩✧𓆪", "☬", "𒆜", "𒀱", "⚡", "𖣘"];
+
+function lol() {
+  return "=" + ")".repeat(Math.floor(Math.random() * 8) + 3);
+}
+
+function getRandomItem(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getWarInsult() {
+  const base = memoryCorpus.length > 0 ? getRandomItem(memoryCorpus) : "Sức mạnh vô đối của Anh Khôi";
+  return `${base}${lol()}`;
+}
+
+function buildWarBanner(mention = "") {
+  const art = getRandomItem(SUOC_MODERN);
+  const m = mention ? `${mention}\n` : "";
+  return `${art}\n\n${m}⚡ 亗 𝕬𝕹𝕳 𝕶𝕳𝕺̂𝕴 𝕯𝕺̣̂𝕮 𝕹𝕳𝕬̂́𝕿 𝖁𝕺̂ 𝕹𝖁𝕴 亗 ⚡`;
+}
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// ==================== NATIVE TELEGRAM CLIENT (ZERO DEPENDENCY) ====================
+class TelegramNativeClient {
+  constructor(token) {
+    this.token = token;
+    this.baseUrl = `https://api.telegram.org/bot${token}`;
+    this.fileUrl = `https://api.telegram.org/file/bot${token}`;
+    this.offset = 0;
+    this.polling = false;
+  }
+
+  async call(method, data = {}) {
+    if (!this.token) return null;
+    try {
+      const res = await fetch(`${this.baseUrl}/${method}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async sendMessage(chatId, text, extra = {}) {
+    return this.call("sendMessage", {
+      chat_id: chatId,
+      text,
+      parse_mode: "Markdown",
+      disable_web_page_preview: true,
+      ...extra
+    });
+  }
+
+  async deleteMessage(chatId, messageId) {
+    return this.call("deleteMessage", { chat_id: chatId, message_id: messageId });
+  }
+
+  async restrictChatMember(chatId, userId, permissions, untilDate) {
+    const payload = { chat_id: chatId, user_id: userId, permissions };
+    if (untilDate) payload.until_date = untilDate;
+    return this.call("restrictChatMember", payload);
+  }
+
+  async banChatMember(chatId, userId) {
+    return this.call("banChatMember", { chat_id: chatId, user_id: userId });
+  }
+
+  async unbanChatMember(chatId, userId) {
+    return this.call("unbanChatMember", { chat_id: chatId, user_id: userId, only_if_banned: true });
+  }
+
+  async getFile(fileId) {
+    return this.call("getFile", { file_id: fileId });
+  }
+
+  async downloadFileText(filePath) {
+    try {
+      const res = await fetch(`${this.fileUrl}/${filePath}`);
+      if (res.ok) return await res.text();
+    } catch {}
+    return null;
+  }
+
+  async deleteWebhook() {
+    return this.call("deleteWebhook", { drop_pending_updates: true });
+  }
+
+  async setMyCommands(commands) {
+    return this.call("setMyCommands", { commands });
+  }
+
+  async startPolling(handler) {
+    this.polling = true;
+    console.log("[*] Engine Telegram đang lắng nghe Polling với Token...");
+    await this.deleteWebhook();
+
+    while (this.polling) {
+      try {
+        const res = await fetch(`${this.baseUrl}/getUpdates?offset=${this.offset}&timeout=25`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.ok && Array.isArray(json.result)) {
+            for (const update of json.result) {
+              this.offset = update.update_id + 1;
+              try { await handler(update); } catch (err) { console.error("Lỗi xử lý:", err); }
+            }
+          }
+        }
+      } catch {
+        await sleep(3000);
+      }
+    }
+  }
+}
+
+const bot = new TelegramNativeClient(BOT_TOKEN);
+
+// ==================== ENGINE TẤN CÔNG ĐA LUỒNG ====================
+const activeTasks = {};
+
+async function turboWorker(chatId, target, mention, mode, content, tid, stats) {
+  while (activeTasks[tid]) {
+    try {
+      const delay = Math.max(parseFloat(db.delay || 0.0001), 0.00001);
+
+      if (mode === "tancoc") {
+        await bot.sendMessage(chatId, buildWarBanner(mention));
+      } else if (mode === "tamxa") {
+        await bot.sendMessage(target, buildWarBanner(mention));
+      } else if (mode === "phatngon") {
+        await bot.sendMessage(chatId, `${mention}\n${content}`);
+      } else if (mode === "diemdanh") {
+        await bot.sendMessage(chatId, `⚡ *${BOT_NAME}* \vert{}${mention}\n\`亗 Đòn #${stats.count + 1}\``);
+      } else if (mode === "baobi") {
+        await bot.sendMessage(chatId, `${getRandomItem(ICONS_MODERN)} ${mention}${getRandomItem(ICONS_MODERN)}`);
+      } else if (mode === "satngon") {
+        await bot.sendMessage(chatId, `𖤍 ${mention ? mention + " " : ""}${getWarInsult()}`);
+      }
+
+      stats.count++;
+      stats.err = 0;
+      await sleep(delay > 0.001 ? delay * 1000 : 1);
+    } catch (err) {
+      stats.err++;
+      if (stats.err >= 6) {
+        activeTasks[tid] = false;
+        break;
+      }
+      await sleep(1000);
+    }
+  }
+}
+
+async function supremeEngine(chatId, userId, target, mention, mode = "tancoc", content = null, workersCount = 1) {
+  const tid = `${chatId}_${userId}`;
+  activeTasks[tid] = true;
+  const stats = { count: 0, err: 0 };
+  const delay = db.delay || 0.0001;
+
+  await bot.sendMessage(
+    chatId,
+    `🚀 *${BOT_NAME} – XUNG TRẬN!*\n` +
+    `🎯 Mục tiêu: ${mention || target}\n` +
+    `⚡ Chế độ: ${mode.toUpperCase()} | Vận tốc: ${delay}s \vert{} Luồng: x${workersCount}\n` +
+    `👑 Thống soái: Anh Khôi`
+  );
+
+  for (let i = 0; i < workersCount; i++) {
+    turboWorker(chatId, target, mention, mode, content, tid, stats);
+  }
+
+  const RUN_TIME = 300 * 1000;
+  const REST_TIME = 25 * 1000;
+
+  while (activeTasks[tid]) {
+    await sleep(RUN_TIME);
+    if (!activeTasks[tid]) break;
+
+    await bot.sendMessage(chatId, `💤 Tạm nghỉ giảm tải ${REST_TIME / 1000}s \vert{} Đã xả: *${stats.count}* đòn`);
+    await sleep(REST_TIME);
+    await bot.sendMessage(chatId, "🔥 ANH KHÔI TIẾP TỤC BÃO LỬA TRỪNG PHẠT!");
+  }
+
+  activeTasks[tid] = false;
+  await bot.sendMessage(chatId, `🏁 *KẾT THÚC CÀN QUÉT* | Tổng lực: *${stats.count}* đòn kết liễu!`);
+}
+
+// ==================== XỬ LÝ TARGET & BẢO VỆ ====================
+function resolveTarget(msg) {
+  let target = null;
+  let mention = null;
+
+  if (msg.reply_to_message && msg.reply_to_message.from) {
+    const u = msg.reply_to_message.from;
+    target = u.id;
+    mention = u.username ? `@${u.username}` : `[${u.first_name || u.id}](tg://user?id=${u.id})`;
+  } else {
+    const p = (msg.text || "").trim().split(/\s+/);
+    if (p.length > 1) {
+      const raw = p[1];
+      target = raw;
+      mention = raw;
+      if (!raw.startsWith("@") && !isNaN(parseInt(raw, 10))) {
+        target = parseInt(raw, 10);
+        mention = `\`${raw}\``;
+      }
+    }
+  }
+
+  if (target || mention) {
+    const chkStr = `${target}${mention}`.toLowerCase();
+    for (const p of PROTECTED) {
+      if (chkStr.includes(p.toLowerCase())) return { target: null, mention: null };
+    }
+  }
+  return { target, mention };
+}
+
+// ==================== BỘ ĐIỀU PHỐI LỆNH TRUNG TÂM ====================
+async function handleUpdate(update) {
+  if (!update.message) return;
+  const m = update.message;
+  const chatId = m.chat.id;
+  const uid = String(m.from ? m.from.id : 0);
+  const text = (m.text || m.caption || "").trim();
+
+  // 1. XỬ LÝ NẠP FILE .TXT (DEDUPLICATION TUYỆT ĐỐI)
+  if (m.document && (text.startsWith("/napfile") || m.caption?.includes("/napfile"))) {
+    if (!isAdm(uid)) return bot.sendMessage(chatId, "❌ Chỉ Thống Soái mới có quyền nạp kho ngôn!");
+    if (!m.document.file_name.toLowerCase().endsWith(".txt")) {
+      return bot.sendMessage(chatId, "💡 Vui lòng gửi định dạng file `.txt`!");
+    }
+
+    const waitMsg = await bot.sendMessage(chatId, "⏳ Đang tải file và tiến hành khử trùng lặp (Hash Deduplication)...");
+    const fileInfo = await bot.getFile(m.document.file_id);
+
+    if (fileInfo && fileInfo.ok && fileInfo.result.file_path) {
+      const rawText = await bot.downloadFileText(fileInfo.result.file_path);
+      if (rawText) {
+        const lines = rawText.split(/\r?\n/);
+        const currentSet = new Set(memoryCorpus);
+        const beforeCount = currentSet.size;
+
+        for (const line of lines) {
+          const cleaned = line.replace(/^\d+[\.\)\]]\s*/, "").trim();
+          if (cleaned.length >= 3) currentSet.add(cleaned);
+        }
+
+        const added = currentSet.size - beforeCount;
+        memoryCorpus = [...currentSet].sort();
+        saveCorpus(memoryCorpus);
+
+        return bot.sendMessage(
+          chatId,
+          `✅ *NẠP FILE THÀNH CÔNG!*\n` +
+          `📄 Tệp: \`${m.document.file_name}\`\n` +
+          `📥 Đã quét: \`${lines.length}\` dòng\n` +
+          `✨ Thêm mới (loại trùng tuyệt đối): \`${added}\` câu\n` +
+          `📊 Tổng kho từ vựng hiện tại: \`${memoryCorpus.length}\` câu`
+        );
+      }
+    }
+    return bot.sendMessage(chatId, "❌ Không thể tải file từ Telegram.");
+  }
+
+  if (!text) return;
+
+  // Lọc lấy command không dính username bot
+  const cmd = text.split(/\s+/)[0].split("@")[0].toLowerCase();
+
+  // Kiểm tra quyền
+  const auth = checkAccess(uid);
+  if (cmd === "/start" || cmd === "/help" || cmd === "/lenh") {
+    let msgHelp =
+      `⚡ *${BOT_NAME}* ⚡\n` +
+      `👑 Tác giả độc quyền: *Phạm Anh Khôi*\n` +
+      `🆔 UID của bạn: \`${uid}\` ${isAdm(uid) ? "*(👑 THỐNG SOÁI TOÀN QUYỀN)*" : ""}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+      `*⚔️ HỎA LỰC TẤN CÔNG:*\n` +
+      `\`/tancoc @user\` — Bão hỏa lực nhóm\n` +
+      `\`/cuongbao @user\` — Cuồng nộ x3 luồng cực hạn\n` +
+      `\`/tamxa @user\` — Bắn phá DM riêng\n` +
+      `\`/phatngon <text>\` — Xả văn bản chỉ định\n` +
+      `\`/diemdanh\` — Bão số đếm thứ tự\n` +
+      `\`/baobi\` — Mưa icon Cyber/Gothic\n` +
+      `\`/satngon @user\` — Xả kho 100.000 ngôn từ\n` +
+      `\`/dinhchi\` — Dừng toàn bộ hỏa lực\n` +
+      `\`/tocdo <giây>\` — Thiết lập độ trễ\n\n` +
+      `*📚 QUẢN LÝ KHO NGÔN TỪ:*\n` +
+      `\`/kho\` — Thống kê và trích xuất mẫu kho\n` +
+      `\`/themngon <câu 1 | câu 2>\` — Thêm thủ công\n` +
+      `\`/napfile\` — Reply hoặc đính kèm file .txt\n` +
+      `\`/xoangon <từ khóa>\` — Lọc xóa câu khỏi kho\n\n` +
+      `*🏠 ĐỊA BÀN & QUẢN TRỊ:*\n` +
+      `\`/dondep <số>\` — Dọn dẹp tin nhắn\n` +
+      `\`/camkhau @user [phút]\` — Cấm chat\n` +
+      `\`/khaitro @user\` — Mở cấm chat\n` +
+      `\`/trutxuat @user\` — Đuổi thành viên\n` +
+      `\`/phongsat @user\` — Ban vĩnh viễn\n` +
+      `\`/nhapma <MÃ>\` — Kích hoạt quyền sử dụng`;
+
+    if (isAdm(uid)) {
+      msgHelp += `\n\n*👑 QUẢN TRỊ TỐI CAO:* \`/capma <ngày> <máy>\``;
+    }
+    return bot.sendMessage(chatId, msgHelp);
+  }
+
+  if (auth === "key" && cmd !== "/nhapma") {
+    return bot.sendMessage(chatId, `🔑 Cần Mã Kích Hoạt Của Anh Khôi! Cú pháp: \`/nhapma <MÃ>\`\n👑 Bot: ${FREE_BOT}`);
+  }
+  if (auth === "banned") {
+    return bot.sendMessage(chatId, "🚫 Bạn đã bị phong sát toàn diện khỏi hệ thống!");
+  }
+
+  // CÁC LỆNH TẤN CÔNG
+  if (cmd === "/tancoc") {
+    const { target, mention } = resolveTarget(m);
+    if (!target) return bot.sendMessage(chatId, "❌ Cú pháp: `/tancoc @user` hoặc reply tin nhắn");
+    supremeEngine(chatId, uid, target, mention, "tancoc", null, 1);
+  } else if (cmd === "/cuongbao") {
+    const { target, mention } = resolveTarget(m);
+    if (!target) return bot.sendMessage(chatId, "❌ Cú pháp: `/cuongbao @user` (Cuồng bạo x3 luồng)");
+    supremeEngine(chatId, uid, target, mention, "tancoc", null, 3);
+  } else if (cmd === "/tamxa") {
+    const { target, mention } = resolveTarget(m);
+    if (!target) return bot.sendMessage(chatId, "❌ Cú pháp: `/tamxa @user`");
+    supremeEngine(chatId, uid, target, mention, "tamxa", null, 1);
+  } else if (cmd === "/phatngon") {
+    const p = text.split(/\s+/);
+    if (p.length < 2) return bot.sendMessage(chatId, "❌ Cú pháp: `/phatngon <nội dung>`");
+    const content = text.substring(p[0].length).trim();
+    const mention = m.reply_to_message?.from?.username ? `@${m.reply_to_message.from.username}` : "";
+    supremeEngine(chatId, uid, chatId, mention, "phatngon", content, 1);
+  } else if (cmd === "/diemdanh") {
+    const mention = m.reply_to_message?.from?.username ? `@${m.reply_to_message.from.username}` : "";
+    supremeEngine(chatId, uid, chatId, mention, "diemdanh", null, 1);
+  } else if (cmd === "/baobi") {
+    const mention = m.reply_to_message?.from?.username ? `@${m.reply_to_message.from.username}` : "";
+    supremeEngine(chatId, uid, chatId, mention, "baobi", null, 1);
+  } else if (cmd === "/satngon") {
+    let { target, mention } = resolveTarget(m);
+    supremeEngine(chatId, uid, target || chatId, mention || "", "satngon", null, 2);
+  } else if (cmd === "/dinhchi") {
+    const tid = `${chatId}_${uid}`;
+    if (isAdm(uid)) {
+      let stopped = 0;
+      Object.keys(activeTasks).forEach(k => {
+        if (k.startsWith(`${chatId}_`) && activeTasks[k]) {
+          activeTasks[k] = false;
+          stopped++;
+        }
+      });
+      return bot.sendMessage(chatId, `🛑 Anh Khôi đã đình chỉ toàn bộ *${stopped}* chiến dịch trong nhóm!`);
+    }
+    if (activeTasks[tid]) {
+      activeTasks[tid] = false;
+      bot.sendMessage(chatId, "🛑 Đã dừng chiến dịch của bạn thành công!");
+    } else {
+      bot.sendMessage(chatId, "⚠️ Không có chiến dịch nào đang chạy.");
+    }
+  } else if (cmd === "/tocdo") {
+    const p = text.split(/\s+/);
+    if (p.length === 1) {
+      return bot.sendMessage(chatId, `⚡ *TỐC ĐỘ HIỆN TẠI:* \`${db.delay || 0.0001}s/đòn\`\nThiết lập: \`/tocdo 0.001\``);
+    }
+    const v = Math.max(parseFloat(p[1]) || 0.0001, 0.00001);
+    db.delay = v;
+    saveDb(db);
+    bot.sendMessage(chatId, `✅ Đã thiết lập vận tốc: *${v}s/đòn*`);
+  }
+
+  // KHO NGÔN TỪ
+  else if (cmd === "/themngon") {
+    if (!isAdm(uid)) return bot.sendMessage(chatId, "❌ Chỉ Thống Soái mới có quyền nạp kho ngôn!");
+    const p = text.split(/\s+/);
+    if (p.length < 2) return bot.sendMessage(chatId, "💡 Cú pháp: `/themngon Câu 1 | Câu 2 | Câu 3`");
+
+    const rawEntries = text.substring(p[0].length).trim().split("|");
+    const currentSet = new Set(memoryCorpus);
+    let added = 0;
+
+    for (const item of rawEntries) {
+      const cleaned = item.replace(/^\d+[\.\)\]]\s*/, "").trim();
+      if (cleaned.length >= 3 && !currentSet.has(cleaned)) {
+        currentSet.add(cleaned);
+        added++;
+      }
+    }
+
+    memoryCorpus = [...currentSet].sort();
+    saveCorpus(memoryCorpus);
+    bot.sendMessage(chatId, `✅ *ĐÃ THÊM THÀNH CÔNG:*\n➕ Thêm mới: \`${added}\` câu\n📚 Tổng kho: \`${memoryCorpus.length}\` câu`);
+  } else if (cmd === "/kho") {
+    const sample = memoryCorpus.slice(0, 5).map(x => `• ${x}`).join("\n");
+    bot.sendMessage(
+      chatId,
+      `📊 *KHO TỪ VỰNG ANH KHÔI*\n` +
+      `Tổng số câu độc nhất: \`${memoryCorpus.length}\` câu\n\n` +
+      `🔍 *Mẫu trích xuất:*\n${sample || "Chưa có dữ liệu"}\n\n` +
+      `💡 Nạp thêm bằng: \`/themngon\` hoặc gửi file \`.txt\` kèm \`/napfile\``
+    );
+  } else if (cmd === "/xoangon") {
+    if (!isAdm(uid)) return bot.sendMessage(chatId, "❌ Quyền hạn bị từ chối!");
+    const p = text.split(/\s+/);
+    if (p.length < 2) return bot.sendMessage(chatId, "💡 Cú pháp: `/xoangon <từ khóa>`");
+    const kw = p.slice(1).join(" ").toLowerCase();
+    const before = memoryCorpus.length;
+    memoryCorpus = memoryCorpus.filter(x => !x.toLowerCase().includes(kw));
+    const removed = before - memoryCorpus.length;
+    saveCorpus(memoryCorpus);
+    bot.sendMessage(chatId, `🗑 Đã xóa sạch \`${removed}\` câu chứa từ khóa \`${kw}\`. Còn lại: \`${memoryCorpus.length}\` câu.`);
+  }
+
+  // ĐỊA BÀN & QUẢN TRỊ
+  else if (cmd === "/dondep" || cmd === "/quetgon") {
+    const p = text.split(/\s+/);
+    let count = Math.min(Math.max(parseInt(p[1], 10) || 20, 1), 100);
+    const startId = m.message_id;
+    let deleted = 0;
+    for (let i = 0; i <= count; i++) {
+      try {
+        await bot.deleteMessage(chatId, startId - i);
+        deleted++;
+      } catch {}
+    }
+    const n = await bot.sendMessage(chatId, `🧹 Đã thanh trừng sạch sẽ *${deleted}* tin nhắn!`);
+    setTimeout(() => { if (n && n.result) bot.deleteMessage(chatId, n.result.message_id); }, 3000);
+  } else if (cmd === "/camkhau") {
+    const { target } = resolveTarget(m);
+    if (!target || isAdm(target)) return bot.sendMessage(chatId, "💡 Cú pháp: `/camkhau @user [phút]`");
+    const p = text.split(/\s+/);
+    const mins = parseInt(p[2], 10) || 0;
+    const until = mins > 0 ? Math.floor(Date.now() / 1000) + mins * 60 : undefined;
+    await bot.restrictChatMember(chatId, Number(target), { can_send_messages: false }, until);
+    bot.sendMessage(chatId, `🔇 Đã cấm khẩu (${mins ? `${mins} phút` : "Vĩnh viễn"})!`);
+  } else if (cmd === "/khaitro") {
+    const { target } = resolveTarget(m);
+    if (!target) return bot.sendMessage(chatId, "💡 Cú pháp: `/khaitro @user`");
+    await bot.restrictChatMember(chatId, Number(target), {
+      can_send_messages: true,
+      can_send_media_messages: true,
+      can_send_other_messages: true,
+      can_add_web_page_previews: true
+    });
+    bot.sendMessage(chatId, "🔊 Đã khai khẩu cho đối tượng!");
+  } else if (cmd === "/trutxuat") {
+    const { target } = resolveTarget(m);
+    if (!target || isAdm(target)) return;
+    await bot.banChatMember(chatId, Number(target));
+    await bot.unbanChatMember(chatId, Number(target));
+    bot.sendMessage(chatId, "👢 Đã trục xuất kẻ bại trận!");
+  } else if (cmd === "/phongsat") {
+    const { target } = resolveTarget(m);
+    if (!target || isAdm(target)) return;
+    await bot.banChatMember(chatId, Number(target));
+    bot.sendMessage(chatId, "🚫 Đã phong sát vĩnh viễn mục tiêu!");
+  }
+
+  // HỆ THỐNG MÃ BẢN QUYỀN
+  else if (cmd === "/capma") {
+    if (!isAdm(uid)) return;
+    const p = text.split(/\s+/);
+    if (p.length < 3) return bot.sendMessage(chatId, "💡 Cú pháp: `/capma <ngày> <số_máy>`");
+    const days = parseInt(p[1], 10);
+    const devs = parseInt(p[2], 10);
+    const k = genKey();
+    db.keys[k] = { days, devs, users: [], created: new Date().toISOString(), by: uid };
+    saveDb(db);
+    bot.sendMessage(chatId, `🔑 *MÃ ĐÃ TẠO BỞI ANH KHÔI!*\n\`${k}\`\n📅 ${days} ngày | 💻 ${devs} máy`);
+  } else if (cmd === "/nhapma") {
+    const p = text.split(/\s+/);
+    if (p.length < 2) return bot.sendMessage(chatId, "💡 Cú pháp: `/nhapma <KEY>`");
+    const k = p[1].toUpperCase();
+    if (!db.keys[k]) return bot.sendMessage(chatId, "❌ Mã không hợp lệ!");
+    const kd = db.keys[k];
+    if (kd.users.includes(uid)) return bot.sendMessage(chatId, "ℹ️ Bạn đã kích hoạt mã này trước đó!");
+    if (kd.users.length >= kd.devs) return bot.sendMessage(chatId, "❌ Mã đã hết lượt sử dụng!");
+    const exp = new Date(Date.now() + kd.days * 86400000);
+    db.users[uid] = exp.toISOString();
+    kd.users.push(uid);
+    saveDb(db);
+    bot.sendMessage(chatId, `✅ *KÍCH HOẠT THÀNH CÔNG!*\n📅 Thời hạn: ${exp.toLocaleString("vi-VN")}`);
+  }
+}
+
+// ==================== HTTP SERVER GIỮ RENDER 24/7 ====================
+function startHttpServer() {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end(`${BOT_NAME}\nSTATUS: ONLINE 24/7 ON RENDER\nAUTHOR: PHAM ANH KHOI\nTOTAL CORPUS: ${memoryCorpus.length}`);
+  });
+
+  server.listen(PORT, HOST, () => {
+    console.log(`[HTTP SERVER] Đã mở cổng Render tại http://${HOST}:${PORT}`);
+  });
+}
+
+// ==================== KHỞI CHẠY HỆ THỐNG ====================
+async function bootstrap() {
+  startHttpServer();
+
+  try {
+    await bot.setMyCommands([
+      { command: "start", description: "Bảng điều khiển" },
+      { command: "lenh", description: "Danh sách chức năng" },
+      { command: "tancoc", description: "Bão hỏa lực nhóm" },
+      { command: "cuongbao", description: "Cuồng nộ x3 luồng" },
+      { command: "tamxa", description: "Bắn phá tin nhắn riêng" },
+      { command: "satngon", description: "Xả kho ngôn từ" },
+      { command: "kho", description: "Thống kê kho ngôn" },
+      { command: "dinhchi", description: "Dừng tấn công" },
+      { command: "tocdo", description: "Thiết lập vận tốc" },
+      { command: "dondep", description: "Dọn dẹp tin nhắn" },
+      { command: "nhapma", description: "Kích hoạt bản quyền" }
+    ]);
+  } catch {}
+
+  bot.startPolling(handleUpdate);
+}
+
+process.on("uncaughtException", (err) => console.error("[LỖI NGOẠI LỆ]:", err?.message || err));
+process.on("unhandledRejection", (reason) => console.error("[LỖI TỪ CHỐI]:", reason?.message || reason));
+
+bootstrap();
